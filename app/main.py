@@ -12,10 +12,10 @@ from app.api.v1.endpoints import router as webhook_router
 from app.core.logger import logger
 
 app = FastAPI(
-    title="RWA Notarization Webhook",
+    title="Ancorhash",
     description=(
-        "API webhook per estrazione documentale (Azure AI) "
-        "e notarizzazione on-chain (Ethereum)."
+        "Notarizzazione RWA per la Compliance B2B — "
+        "estrazione documentale (Azure AI) e anchoring on-chain (Ethereum)."
     ),
     version="0.1.0",
 )

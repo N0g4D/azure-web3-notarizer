@@ -1,13 +1,15 @@
-# AML Notarization Webhook
+# Ancorhash — Notarizzazione RWA per la Compliance B2B
 
-> **Microsoft ISV Success Program** — This project is developed as part of the Microsoft ISV Success initiative, leveraging Azure AI services for enterprise-grade document intelligence.
+> **Microsoft ISV Success Program** — Ancorhash is developed as part of the Microsoft ISV Success initiative, leveraging Azure AI services for enterprise-grade document intelligence and blockchain notarization.
 
-Stateless FastAPI webhook that receives business certificates (ISO 9001, audit reports, RINA-style documents) from **Microsoft Power Automate**, extracts key data via **Azure AI Document Intelligence**, and anchors a cryptographic fingerprint (SHA-256) on the **Ethereum blockchain** to guarantee immutability and timestamping.
+Ancorhash is a stateless FastAPI webhook that receives business certificates (ISO 9001, audit reports, RINA-style documents) from **Microsoft Power Automate**, extracts key fields via **Azure AI Document Intelligence**, and anchors a cryptographic fingerprint (SHA-256) on the **Ethereum blockchain** — guaranteeing immutability, timestamping, and regulatory compliance for B2B workflows.
+
+> **Design philosophy.** Ancorhash follows a minimal, purposeful aesthetic: no database, no cache, no queue, no frontend. One request in, one transaction out. Every component exists because it must.
 
 ## Architecture
 
 ```
-Power App (UI) → Power Automate → [This Webhook] → Azure AI (OCR) → Ethereum (Notarization)
+Power App (UI) → Power Automate → [ Ancorhash ] → Azure AI (OCR) → Ethereum (Notarization)
 ```
 
 | Layer | Technology |
@@ -18,7 +20,7 @@ Power App (UI) → Power Automate → [This Webhook] → Azure AI (OCR) → Ethe
 | **Blockchain** | Web3.py — EIP-1559 transactions on Ethereum Sepolia / Mainnet |
 | **Resilience** | Tenacity (exponential backoff), httpx (async HTTP) |
 
-The API is **100% stateless**: no database, no cache, no queue. Each request is self-contained.
+The API is **100% stateless**. Each request is self-contained.
 
 ## Project Structure
 
@@ -41,8 +43,6 @@ app/
 
 ## Configuration
 
-Copy the environment template and fill in your credentials:
-
 ```bash
 cp .env.example .env
 ```
@@ -55,7 +55,7 @@ cp .env.example .env
 | `AZURE_ENDPOINT` | Azure AI Document Intelligence endpoint URL |
 | `AZURE_KEY` | Azure AI Document Intelligence API key |
 
-> **Security:** Never commit `.env` to version control. All secrets are loaded at runtime via `pydantic-settings`.
+> **Security.** Never commit `.env` to version control. All secrets are loaded at runtime via `pydantic-settings`.
 
 ## Installation
 
@@ -77,17 +77,10 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload
 ```
 
-The webhook endpoint will be available at:
-
-```
-POST http://localhost:8000/api/v1/documents/webhook
-```
-
-A health check is exposed at:
-
-```
-GET http://localhost:8000/health
-```
+| Endpoint | Method | Description |
+|:---|:---|:---|
+| `/api/v1/documents/webhook` | `POST` | Main webhook (called by Power Automate) |
+| `/health` | `GET` | Liveness probe |
 
 ## Running Tests
 
