@@ -1,0 +1,7 @@
+{
+  "document_id": "REQ-2026-8891",
+  "document_type": "invoice",
+  "document_url": "https://dummy-url.com/fattura_test.pdf",
+  "wallet_address": "0x1234567890123456789012345678901234567890",
+  "sender_email": "admin@azienda.com"
+}
