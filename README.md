@@ -1,7 +1,5 @@
 # Ancorhash — Notarizzazione RWA per la Compliance B2B
 
-> **Microsoft ISV Success Program** — Ancorhash is developed as part of the Microsoft ISV Success initiative, leveraging Azure AI services for enterprise-grade document intelligence and blockchain notarization.
-
 Ancorhash is a stateless FastAPI webhook that receives business certificates (ISO 9001, audit reports, RINA-style documents) from **Microsoft Power Automate**, extracts key fields via **Azure AI Document Intelligence**, and anchors a cryptographic fingerprint (SHA-256) on the **Ethereum blockchain** — guaranteeing immutability, timestamping, and regulatory compliance for B2B workflows.
 
 > **Design philosophy.** Ancorhash follows a minimal, purposeful aesthetic: no database, no cache, no queue, no frontend. One request in, one transaction out. Every component exists because it must.
