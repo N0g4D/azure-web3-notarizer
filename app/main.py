@@ -3,8 +3,6 @@
 Avvio: ``uvicorn app.main:app --reload``
 """
 
-import traceback
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -30,9 +28,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     Lo stack trace completo viene loggato in JSON ma MAI esposto al client.
     """
     logger.error(
-        "Errore critico non gestito: %s\n%s",
-        exc,
-        traceback.format_exc(),
+        "Errore critico non gestito: %s — %s",
+        exc.__class__.__name__,
+        str(exc)[:200],
     )
     return JSONResponse(
         status_code=500,

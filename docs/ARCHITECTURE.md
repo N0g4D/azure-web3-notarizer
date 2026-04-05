@@ -38,7 +38,7 @@ Il webhook sarà esposto su internet e chiamato esclusivamente da Power Automate
 
 ### Fase B: Estrazione e Analisi (Azure AI)
 1. L'app scarica il PDF in memoria (RAM) tramite `document_url` via `httpx` (Timeout max: 10 secondi, limitazione dimensione buffer: 10MB).
-2. Invio del buffer ad Azure AI Document Intelligence. Usare il modello `prebuilt-document` o un classificatore custom specificato in `.env`.
+2. Invio del buffer ad Azure AI Document Intelligence. Usare il modello `prebuilt-layout` con feature add-on `KEY_VALUE_PAIRS` (API v4.0 2024-11-30). Il precedente `prebuilt-document` è deprecato.
 3. Implementare `tenacity` per retry automatici e backoff sulle chiamate ad Azure (gestione vitale per errori HTTP 429 Too Many Requests e 503).
 
 ### Fase C: Hashing e Notarizzazione On-Chain (Ethereum)
@@ -111,3 +111,66 @@ L'API non deve mai andare in crash silente. Ogni fallimento solleva una `HTTPExc
 ├── tests/
 ├── .env.example              # Template variabili d'ambiente (VUOTI)
 └── requirements.txt
+```
+
+---
+
+## 8. Roadmap & Microsoft ISV Vision
+
+### Core Identity
+
+Ancorhash è un'applicazione **Web3 di notarizzazione**. Il prodotto è la certificazione dell'hash SHA-256 (calcolato sul file raw, byte-per-byte) sulla blockchain Ethereum. L'hash on-chain garantisce:
+
+- **Prova di esistenza** — il documento esisteva al timestamp del blocco.
+- **Integrità** — qualsiasi modifica al file produce un hash diverso.
+- **Non-repudiabilità** — la firma crittografica del wallet notarizer lega l'operazione a un'identità.
+
+Tutto il resto — Azure, Power Apps, Dataverse — è infrastruttura di delivery e go-to-market, non valore tecnico intrinseco.
+
+### Ruolo di Azure (Estrattore di Comodità)
+
+Azure AI Document Intelligence **non è il core del prodotto**. È stato scelto perché l'ecosistema Microsoft offre integrazione nativa tra i suoi servizi (Power Automate → Azure AI → Power Apps → Dataverse). Se domani Azure venisse sostituito con un altro OCR, il motore di notarizzazione non cambierebbe di una riga.
+
+### Architettura Target (ISV)
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                    POWER APP (UI)                        │
+│  Gestionale aziendale per certificati B2B                │
+│  Upload PDF → visualizza metadati → mostra tx_hash      │
+└──────────────────────┬──────────────────────────────────┘
+                       │  Dataverse (storage)
+                       │  PDF + metadati + doc_hash + tx_hash
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│               POWER AUTOMATE (orchestrator)              │
+│  Trigger: nuovo record in Dataverse                      │
+│  Azione: POST /api/v1/documents/webhook                  │
+│  Callback: salva tx_hash + extracted_data nel record     │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│          ANCORHASH BACKEND (questo repo)                 │
+│  FastAPI webhook — motore invisibile                     │
+│                                                          │
+│  PDF bytes ──→ SHA-256 ──→ Ethereum tx (0 ETH + hash)   │
+│       │                                                  │
+│       └──→ Azure AI ──→ extracted_data (JSON)            │
+│            (comodità, non core)                           │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+              Ethereum Sepolia / Mainnet
+              Transazione immutabile con hash nel campo data
+```
+
+### Fasi della Roadmap
+
+| Fase | Stato | Descrizione |
+| :--- | :--- | :--- |
+| **1. Backend** | ✅ Completato | Webhook FastAPI E2E: download → Azure AI → SHA-256 su file raw → notarizzazione EIP-1559 su Sepolia. Security audit (SecretStr, SSRF guard, streaming OOM guard). Test suite 12/12. |
+| **2. Power App** | 🔜 Prossimo | Gestionale su Power Apps + Dataverse. L'utente carica il PDF, la Power App lo salva in Dataverse, Power Automate chiama il webhook, il record viene arricchito con `tx_hash`, `doc_hash`, `extracted_data`. |
+| **3. ISV Submission** | 📋 Pianificato | Presentazione della soluzione completa (Power App + Dataverse + backend Web3) al programma Microsoft ISV (Independent Software Vendor). Il Web3 è il motore antifrode invisibile; il prodotto commerciale per Microsoft è il gestionale su Power Apps/Dataverse. |
+
+### Principio Architetturale
+
+> Il backend Python è un **motore sotto il cofano**. Non ha UI, non ha stato, non ha database. Riceve una richiesta, notarizza, risponde. La Power App è il prodotto che l'utente vede e che Microsoft valuta.

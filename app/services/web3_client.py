@@ -3,8 +3,9 @@
 Nessuna dipendenza da FastAPI: solleva eccezioni Python standard.
 """
 
+import asyncio
 import hashlib
-import json
+from functools import lru_cache
 
 from eth_account import Account
 from tenacity import (
@@ -18,27 +19,45 @@ from web3.exceptions import Web3RPCError
 from app.core.config import settings
 from app.core.logger import logger
 
+# --- Singleton: riutilizza provider HTTP e account tra le richieste ---
 
-def _build_w3() -> AsyncWeb3:
-    """Crea un'istanza AsyncWeb3 connessa all'RPC configurato."""
-    return AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(settings.RPC_URL))
+_w3: AsyncWeb3 | None = None
+_chain_id: int | None = None
 
 
+def _get_w3() -> AsyncWeb3:
+    """Restituisce un'istanza AsyncWeb3 singleton (riusa il pool HTTP)."""
+    global _w3
+    if _w3 is None:
+        _w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(settings.RPC_URL))
+    return _w3
+
+
+@lru_cache(maxsize=1)
 def _get_account() -> Account:
-    """Carica l'account dal PRIVATE_KEY in settings."""
-    return Account.from_key(settings.PRIVATE_KEY)
+    """Carica l'account dal PRIVATE_KEY (cached, parsato una sola volta)."""
+    return Account.from_key(settings.PRIVATE_KEY.get_secret_value())
 
 
-def generate_hash(data: dict) -> str:
-    """Ordinamento deterministico + SHA-256.
+async def _get_chain_id() -> int:
+    """Restituisce il chain_id (cached dopo la prima chiamata RPC)."""
+    global _chain_id
+    if _chain_id is None:
+        _chain_id = await _get_w3().eth.chain_id
+    return _chain_id
 
-    1. Ordina le chiavi alfabeticamente (ricorsivo non necessario: i valori
-       Azure sono stringhe piatte).
-    2. Serializza in JSON compatto (no spazi).
-    3. Restituisce l'hash SHA-256 in formato hex (senza prefisso 0x).
+
+def generate_hash(file_bytes: bytes) -> str:
+    """SHA-256 del file raw (byte-per-byte).
+
+    L'hash è calcolato direttamente sul contenuto binario del documento,
+    garantendo determinismo assoluto: stesso file → stesso hash, sempre,
+    indipendentemente da Azure o qualsiasi altro intermediario.
+
+    Returns:
+        Hash SHA-256 in formato hex (64 caratteri, senza prefisso 0x).
     """
-    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return hashlib.sha256(file_bytes).hexdigest()
 
 
 @retry(
@@ -61,15 +80,17 @@ async def notarize_hash(wallet_address: str, doc_hash: str) -> str:
         Web3RPCError: Se il broadcast fallisce dopo 3 tentativi (es. NonceTooLow).
         ConnectionError: Se il nodo RPC non è raggiungibile.
     """
-    w3 = _build_w3()
+    w3 = _get_w3()
     account = _get_account()
 
     try:
-        chain_id = await w3.eth.chain_id
-        nonce = await w3.eth.get_transaction_count(account.address, "pending")
-        latest_block = await w3.eth.get_block("latest")
+        chain_id, nonce, latest_block, max_priority_fee = await asyncio.gather(
+            _get_chain_id(),
+            w3.eth.get_transaction_count(account.address, "pending"),
+            w3.eth.get_block("latest"),
+            w3.eth.max_priority_fee,
+        )
         base_fee = latest_block.get("baseFeePerGas", 0)
-        max_priority_fee = await w3.eth.max_priority_fee
     except Exception as exc:
         msg = f"Impossibile comunicare con il nodo RPC: {exc}"
         raise ConnectionError(msg) from exc

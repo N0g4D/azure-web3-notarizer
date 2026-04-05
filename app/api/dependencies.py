@@ -16,7 +16,7 @@ async def verify_api_key(
     Il confronto avviene in tempo costante (``secrets.compare_digest``)
     per prevenire attacchi di timing.
     """
-    if api_key is None or not secrets.compare_digest(api_key, settings.API_KEY):
+    if api_key is None or not secrets.compare_digest(api_key, settings.API_KEY.get_secret_value()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API Key mancante o non valida.",

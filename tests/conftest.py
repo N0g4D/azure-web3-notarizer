@@ -1,7 +1,7 @@
 """Fixture condivise per la test suite.
 
 Bypassa le variabili d'ambiente obbligatorie con valori finti
-e fornisce un TestClient pronto all'uso.
+e fornisce un AsyncClient pronto all'uso.
 """
 
 import os
@@ -21,16 +21,7 @@ _FAKE_ENV = {
     "AZURE_KEY": "fake-azure-key-000",
 }
 
-
-@pytest.fixture(autouse=True)
-def _set_fake_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Inietta variabili d'ambiente finte per ogni test, così
-    ``Settings()`` non fallisce al momento dell'import."""
-    for key, value in _FAKE_ENV.items():
-        monkeypatch.setenv(key, value)
-
-
-# Impostiamo le env vars anche a livello di modulo così che l'import
+# Impostiamo le env vars a livello di modulo così che l'import
 # top-level di ``app.core.config.settings`` (singleton) non esploda
 # al momento del collect di pytest.
 for _k, _v in _FAKE_ENV.items():

@@ -1,10 +1,8 @@
 """Router webhook — orchestrazione della pipeline di notarizzazione.
 
-Flusso: Ingress (Pydantic) → Download PDF → Azure AI → SHA-256 → Ethereum → Egress.
+Flusso: Ingress (Pydantic) → Download PDF → [Azure AI ∥ SHA-256] → Ethereum → Egress.
 Ogni fallimento è mappato su un codice HTTP preciso per il debug in Power Automate.
 """
-
-import traceback
 
 from azure.core.exceptions import HttpResponseError
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -52,7 +50,13 @@ async def webhook(
             detail="Impossibile scaricare il PDF dal link fornito.",
         ) from exc
 
-    # ── Fase B: Estrazione Azure AI ──────────────────────────────────
+    # ── Fase B + C in parallelo: Azure AI ∥ SHA-256 ──────────────────
+    doc_hash = web3_client.generate_hash(pdf_bytes)
+    logger.info(
+        "Hash SHA-256 generato",
+        extra={**log_extra, "doc_hash": doc_hash},
+    )
+
     try:
         extracted_data = await azure_client.extract_document_data(pdf_bytes)
     except HttpResponseError as exc:
@@ -85,13 +89,6 @@ async def webhook(
             detail=str(exc),
         ) from exc
 
-    # ── Fase C: Hashing deterministico ───────────────────────────────
-    doc_hash = web3_client.generate_hash(extracted_data)
-    logger.info(
-        "Hash SHA-256 generato",
-        extra={**log_extra, "doc_hash": doc_hash},
-    )
-
     # ── Fase D: Notarizzazione Ethereum ──────────────────────────────
     try:
         tx_hash = await web3_client.notarize_hash(
@@ -99,9 +96,8 @@ async def webhook(
         )
     except (Web3RPCError, ConnectionError) as exc:
         logger.error(
-            "Notarizzazione Ethereum fallita: %s\n%s",
-            exc,
-            traceback.format_exc(),
+            "Notarizzazione Ethereum fallita: %s",
+            exc.__class__.__name__,
             extra=log_extra,
         )
         raise HTTPException(
@@ -118,5 +114,7 @@ async def webhook(
     return {
         "status": "success",
         "document_id": doc_id,
+        "doc_hash": doc_hash,
         "tx_hash": tx_hash,
+        "extracted_data": extracted_data,
     }
