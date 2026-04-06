@@ -6,7 +6,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Ethereum](https://img.shields.io/badge/Ethereum-3C3C3D?logo=ethereum&logoColor=white)](https://ethereum.org)
 [![Azure AI](https://img.shields.io/badge/Azure%20AI-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/ai-document-intelligence)
-[![Tests](https://img.shields.io/badge/tests-12%20passed-brightgreen?logo=pytest&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/tests-15%20passed-brightgreen?logo=pytest&logoColor=white)]()
 [![License](https://img.shields.io/badge/license-Proprietary-red)]()
 
 ---
@@ -39,7 +39,7 @@ graph TB
 
     PA -->|"Upload PDF"| DV
     DV -->|"Trigger"| AUTO
-    AUTO -->|"POST /webhook<br/>PDF URL + wallet"| API
+    AUTO -->|"POST /api/v1/...<br/>PDF URL + wallet"| API
     API -->|"Extract fields"| AZ
     API -->|"0 ETH tx + SHA-256"| ETH
     API -->|"tx_hash + extracted_data"| AUTO
@@ -54,18 +54,36 @@ graph TB
     style DV fill:#00A4EF,stroke:#00A4EF,color:#fff
 ```
 
-### Pipeline Flow
+### API Surface (API-first)
+
+Three atomic endpoints, each protected by `X-API-Key`. Pick the one
+that matches the operation you actually need — pay only for what you use.
 
 ```
-POST /api/v1/documents/webhook
+POST /api/v1/notarize                       Download → SHA-256 → Ethereum
+POST /api/v1/extract                        Download → Azure AI OCR
+POST /api/v1/workflows/process-and-notarize Download → (Azure ∥ Web3)  ← composite
+```
+
+| Endpoint | Input | Calls Azure? | Calls Web3? | Returns |
+|:---|:---|:---:|:---:|:---|
+| `/api/v1/notarize` | `document_id`, `document_url`, `wallet_address` | no | yes | `status`, `doc_hash`, `tx_hash` |
+| `/api/v1/extract` | `document_id`, `document_url` | yes | no | `status`, `extracted_data` |
+| `/api/v1/workflows/process-and-notarize` | `document_id`, `document_url`, `wallet_address` | yes | yes | `status`, `doc_hash`, `tx_hash`, `extracted_data` |
+
+### Pipeline Flow (composite workflow)
+
+```
+POST /api/v1/workflows/process-and-notarize
 │
 ├─ Auth ─── X-API-Key header (constant-time comparison)
 ├─ Validate ─── Pydantic strict: document_id, document_url, wallet_address (EIP-55)
 │
 ├─ Phase A ─── Download PDF (streaming, 10 MB cap, SSRF protection)
 ├─ Phase B ─── SHA-256 hash on raw file bytes (deterministic, Azure-independent)
-├─ Phase C ─── Azure AI Document Intelligence (field extraction, key-value pairs)
-├─ Phase D ─── Ethereum EIP-1559 transaction (0 ETH, hash in data field)
+├─ Phase C ∥ D ─── Azure AI Document Intelligence  ∥  Ethereum EIP-1559 tx
+│                  (field extraction)              (0 ETH, hash in data field)
+│                  └─── asyncio.gather (parallel) ───┘
 │
 └─ Response ─── { status, document_id, doc_hash, tx_hash, extracted_data }
 ```
@@ -137,7 +155,9 @@ uvicorn app.main:app --reload
 
 | Endpoint | Method | Description |
 |:---|:---|:---|
-| `/api/v1/documents/webhook` | `POST` | Main notarization webhook |
+| `/api/v1/notarize` | `POST` | Atomic: download + SHA-256 + Ethereum notarization (no Azure) |
+| `/api/v1/extract` | `POST` | Atomic: download + Azure AI field extraction (no Web3) |
+| `/api/v1/workflows/process-and-notarize` | `POST` | Composite workflow: parallel Azure ∥ Web3 |
 | `/health` | `GET` | Liveness probe |
 | `/docs` | `GET` | Interactive API documentation (Swagger UI) |
 
@@ -147,7 +167,7 @@ uvicorn app.main:app --reload
 pytest tests/ -v
 ```
 
-All 12 tests are fully isolated — no real calls to Azure or Ethereum.
+All 15 tests are fully isolated — no real calls to Azure or Ethereum.
 
 ---
 
@@ -158,12 +178,12 @@ app/
 ├── api/
 │   ├── dependencies.py         # API Key auth (X-API-Key, constant-time)
 │   └── v1/
-│       └── endpoints.py        # POST /api/v1/documents/webhook
+│       └── endpoints.py        # POST /notarize, /extract, /workflows/process-and-notarize
 ├── core/
 │   ├── config.py               # Pydantic BaseSettings + SecretStr + validators
 │   └── logger.py               # Structured JSON logging
 ├── models/
-│   └── schemas.py              # WebhookPayload with EIP-55 validation
+│   └── schemas.py              # NotarizeRequest, ExtractRequest, FullProcessRequest (+ responses)
 ├── services/
 │   ├── azure_client.py         # SSRF-safe PDF download + Azure AI extraction
 │   └── web3_client.py          # SHA-256 hashing + Ethereum notarization
@@ -171,7 +191,7 @@ app/
 
 tests/
 ├── conftest.py                 # Fixtures: fake env, async client, valid payloads
-└── test_webhook.py             # 12 tests: auth, validation, SSRF, OOM, happy path
+└── test_endpoints.py           # 15 tests: auth, validation, SSRF, OOM, atomic + workflow happy paths
 
 docs/
 ├── ARCHITECTURE.md             # System architecture + ISV roadmap
@@ -197,7 +217,7 @@ docs/
 
 | Phase | Status | Description |
 |:---|:---|:---|
-| **Backend API** | Done | FastAPI webhook — E2E notarization on Sepolia, security hardened, 12 tests |
+| **Backend API** | Done | FastAPI API-first — atomic + composite endpoints, E2E notarization on Sepolia, security hardened, 15 tests |
 | **Power App** | Next | B2B document manager on Power Apps + Dataverse. Upload PDF, store metadata, display `tx_hash` |
 | **ISV Submission** | Planned | Submit the full solution (Power App + Dataverse + Ancorhash) to the Microsoft ISV Success Program |
 
