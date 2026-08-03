@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ancorhash.Api/Ancorhash.Api.csproj" />
+    <Project Path="src/Ancorhash.Core/Ancorhash.Core.csproj" />
+    <Project Path="src/Ancorhash.Infrastructure/Ancorhash.Infrastructure.csproj" />
+  </Folder>
+</Solution>

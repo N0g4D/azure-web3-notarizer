@@ -1,0 +1,16 @@
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Api/bin/output/Ancorhash.Core.deps.json
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Api/bin/output/Ancorhash.Core.dll
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Api/bin/output/Ancorhash.Core.pdb
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/bin/Debug/net10.0/Ancorhash.Core.deps.json
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/bin/Debug/net10.0/Ancorhash.Core.dll
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/bin/Debug/net10.0/Ancorhash.Core.pdb
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.csproj.AssemblyReference.cache
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.GeneratedMSBuildEditorConfig.editorconfig
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.AssemblyInfoInputs.cache
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.AssemblyInfo.cs
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.csproj.CoreCompileInputs.cache
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.sourcelink.json
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.dll
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/refint/Ancorhash.Core.dll
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/Ancorhash.Core.pdb
+/Users/n0g4d/Documents/prjz/rwa/src/Ancorhash.Core/obj/Debug/net10.0/ref/Ancorhash.Core.dll
