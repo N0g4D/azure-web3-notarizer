@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using static Ancorhash.Api.Contracts.ApiResults;
 
 namespace Ancorhash.Api.Functions;
 
@@ -79,7 +80,4 @@ public sealed class NotarizeFunction(
             return Error(StatusCodes.Status500InternalServerError, ex.InnerException?.Message ?? ex.Message);
         }
     }
-
-    private static ObjectResult Error(int statusCode, string detail) =>
-        new(new ApiErrorResponse { Detail = detail }) { StatusCode = statusCode };
 }
