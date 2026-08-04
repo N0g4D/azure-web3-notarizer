@@ -27,6 +27,17 @@ const EXPLORER_TX_URLS: Record<number, string> = {
 /** Wallet mock del PoC (checksummato EIP-55, richiesto dal backend). */
 const MOCK_WALLET_ADDRESS = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 
+/** Ricarico fisso di servizio applicato sopra il costo di rete (USD). */
+const SERVICE_FEE_USD = 1.48
+/** Durata della simulazione di pagamento (checkout mock per le demo B2B). */
+const PAYMENT_SIMULATION_MS = 2000
+
+/** Importo in USD a due decimali; sotto il centesimo mostra "<$0.01". */
+function formatUsd(amount: number): string {
+  if (amount > 0 && amount < 0.01) return '<$0.01'
+  return `$${amount.toFixed(2)}`
+}
+
 /** Suffisso di costo per il selettore: "(Gratis)" o "(~$0.02)". */
 function formatChainCost(chain: Chain): string {
   if (chain.is_free) return '(Gratis)'
@@ -138,10 +149,19 @@ function App() {
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const turnstileRef = useRef<TurnstileInstance | null>(null)
 
+  // Checkout simulato: nessun pagamento reale, solo la fase di attesa percepita.
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const paymentTimerRef = useRef<number | null>(null)
+
   const selectedChain =
     chainsState.kind === 'ready'
       ? chainsState.chains.find((c) => c.chain_id === selectedChainId)
       : undefined
+
+  // Riepilogo finanziario: gas a carico del relayer + ricarico di servizio.
+  const gasCostUsd =
+    selectedChain && !selectedChain.is_free ? selectedChain.estimated_cost_usd : 0
+  const totalUsd = gasCostUsd + SERVICE_FEE_USD
 
   const handleFileSelected = useCallback(
     async (file: File) => {
@@ -216,10 +236,36 @@ function App() {
     }
   }, [phase, selectedChainId, turnstileToken])
 
+  /**
+   * Checkout mock: mostra una fase di "pagamento in corso" per qualche secondo,
+   * poi delega alla notarizzazione reale. Nessun addebito viene effettuato.
+   */
+  const handleCheckout = useCallback(() => {
+    if (isProcessingPayment) return
+    setIsProcessingPayment(true)
+    paymentTimerRef.current = window.setTimeout(() => {
+      paymentTimerRef.current = null
+      setIsProcessingPayment(false)
+      void handleNotarize()
+    }, PAYMENT_SIMULATION_MS)
+  }, [handleNotarize, isProcessingPayment])
+
+  const cancelPendingPayment = useCallback(() => {
+    if (paymentTimerRef.current !== null) {
+      window.clearTimeout(paymentTimerRef.current)
+      paymentTimerRef.current = null
+    }
+    setIsProcessingPayment(false)
+  }, [])
+
+  // Evita che un timer pendente scriva stato su un componente smontato.
+  useEffect(() => cancelPendingPayment, [cancelPendingPayment])
+
   const reset = useCallback(() => {
+    cancelPendingPayment()
     setPhase({ kind: 'idle' })
     setTurnstileToken(null)
-  }, [])
+  }, [cancelPendingPayment])
 
   const isBusy = phase.kind === 'analyzing' || phase.kind === 'submitting'
   const showPreview =
@@ -432,9 +478,55 @@ function App() {
         {(phase.kind === 'preview' ||
           phase.kind === 'submitting' ||
           (phase.kind === 'error' && phase.hash !== '')) && (
-          <div className="mt-6">
+          <div className="mt-6 rounded-lg border border-neutral-200 bg-neutral-50 p-5">
+            <div className="flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold">Checkout</h3>
+              <span className="text-[11px] text-neutral-400">
+                Pagamento simulato — nessun addebito reale
+              </span>
+            </div>
+
+            <dl className="mt-4 space-y-2 text-sm">
+              <div className="flex items-baseline justify-between">
+                <dt className="text-neutral-500">Costo Rete (Gas)</dt>
+                <dd className="font-mono text-neutral-900">
+                  {formatUsd(gasCostUsd)}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <dt className="text-neutral-500">Commissione di Servizio</dt>
+                <dd className="font-mono text-neutral-900">
+                  {formatUsd(SERVICE_FEE_USD)}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between border-t border-neutral-200 pt-2 font-semibold text-neutral-900">
+                <dt>Totale da Pagare</dt>
+                <dd className="font-mono">${totalUsd.toFixed(2)}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-4">
+              <label
+                htmlFor="card-number"
+                className="text-xs font-medium text-neutral-500"
+              >
+                Metodo di pagamento
+              </label>
+              <input
+                id="card-number"
+                type="text"
+                disabled
+                readOnly
+                value="•••• •••• •••• 4242"
+                className="mt-1.5 w-full cursor-not-allowed rounded-lg border border-neutral-200 bg-white px-3 py-2 font-mono text-sm text-neutral-500"
+              />
+              <p className="mt-1.5 text-[11px] text-neutral-400">
+                Powered by Stripe
+              </p>
+            </div>
+
             {TURNSTILE_SITEKEY ? (
-              <div className="mb-4">
+              <div className="mt-4">
                 <Turnstile
                   ref={turnstileRef}
                   siteKey={TURNSTILE_SITEKEY}
@@ -445,28 +537,35 @@ function App() {
                 />
               </div>
             ) : (
-              <p className="mb-4 text-xs text-neutral-400">
+              <p className="mt-4 text-xs text-neutral-400">
                 Turnstile non configurato (VITE_TURNSTILE_SITEKEY mancante): la
                 verifica anti-bot è disabilitata.
               </p>
             )}
+
             <button
               type="button"
-              onClick={handleNotarize}
+              onClick={handleCheckout}
               disabled={
                 isBusy ||
+                isProcessingPayment ||
                 selectedChainId === null ||
                 (TURNSTILE_SITEKEY !== undefined && turnstileToken === null)
               }
-              className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {phase.kind === 'submitting' ? (
+              {isProcessingPayment ? (
+                <>
+                  <Spinner className="h-4 w-4" />
+                  Elaborazione pagamento…
+                </>
+              ) : phase.kind === 'submitting' ? (
                 <>
                   <Spinner className="h-4 w-4" />
                   Attesa conferma da {selectedChain?.name ?? 'rete'}…
                 </>
               ) : (
-                `Notarizza su ${selectedChain?.name ?? 'Blockchain'}`
+                `Paga $${totalUsd.toFixed(2)} e Notarizza`
               )}
             </button>
           </div>
