@@ -2,6 +2,7 @@ using Ancorhash.Core.Abstractions;
 using Ancorhash.Infrastructure.Blockchain;
 using Ancorhash.Infrastructure.Configuration;
 using Ancorhash.Infrastructure.DocumentIntelligence;
+using Ancorhash.Infrastructure.Security;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.Configuration;
@@ -43,6 +44,12 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(DocumentIntelligenceOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        services.AddOptions<TurnstileOptions>()
+            .Bind(configuration.GetSection(TurnstileOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddHttpClient<ITurnstileValidator, CloudflareTurnstileValidator>();
 
         services.AddSingleton<IWeb3Factory, NethereumWeb3Factory>();
         services.AddSingleton<IWalletAddressValidator, NethereumWalletAddressValidator>();

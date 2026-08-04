@@ -9,6 +9,7 @@ export interface NotarizeRequest {
   document_hash: string
   wallet_address: string
   chain_id: number
+  turnstile_token: string
 }
 
 export interface NotarizeResponse {

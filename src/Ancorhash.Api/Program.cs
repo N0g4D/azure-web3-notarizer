@@ -1,3 +1,4 @@
+using Ancorhash.Api.Middleware;
 using Ancorhash.Core;
 using Ancorhash.Infrastructure;
 using Azure.Identity;
@@ -14,6 +15,9 @@ var builder = FunctionsApplication.CreateBuilder(args);
 
 builder.ConfigureFunctionsWebApplication();
 
+// Anti-draining: rate limiting per IP su /notarize, prima di ogni function.
+builder.UseMiddleware<RateLimitingMiddleware>();
+
 // Azure Key Vault come configuration provider: il segreto Evm--RelayerPrivateKey
 // diventa la chiave Evm:RelayerPrivateKey e popola BlockchainOptions.RelayerPrivateKey.
 // In locale (KeyVault:Uri assente) la stessa chiave arriva da Evm__RelayerPrivateKey.
@@ -29,6 +33,8 @@ if (!string.IsNullOrWhiteSpace(keyVaultUri))
 builder.Services.AddOpenTelemetry()
     .UseFunctionsWorkerDefaults();
     // .UseAzureMonitorExporter();
+
+builder.Services.AddMemoryCache();
 
 builder.Services
     .AddAncorhashCore()

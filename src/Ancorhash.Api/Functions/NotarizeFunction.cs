@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ancorhash.Api.Contracts;
+using Ancorhash.Api.Http;
 using Ancorhash.Core.Abstractions;
 using Ancorhash.Core.Exceptions;
 using Ancorhash.Core.Models;
@@ -18,6 +19,7 @@ namespace Ancorhash.Api.Functions;
 /// </summary>
 public sealed class NotarizeFunction(
     INotarizationService notarizationService,
+    ITurnstileValidator turnstileValidator,
     ILogger<NotarizeFunction> logger)
 {
     [Function("Notarize")]
@@ -39,6 +41,19 @@ public sealed class NotarizeFunction(
         if (payload is null)
         {
             return Error(StatusCodes.Status400BadRequest, "Body della richiesta mancante.");
+        }
+
+        // Difesa anti-draining: la verifica anti-bot avviene PRIMA di ogni
+        // validazione di dominio e di ogni interazione con la blockchain.
+        var clientIp = ClientIpResolver.Resolve(request.HttpContext);
+        var isTokenValid = await turnstileValidator.ValidateAsync(
+            payload.TurnstileToken ?? string.Empty, clientIp, cancellationToken);
+        if (!isTokenValid)
+        {
+            logger.LogWarning(
+                "Notarize bloccata: verifica Turnstile fallita per IP {ClientIp}", clientIp);
+            return Error(StatusCodes.Status403Forbidden,
+                "Verifica anti-bot fallita. Aggiorna la pagina e riprova.");
         }
 
         var command = new NotarizationCommand(

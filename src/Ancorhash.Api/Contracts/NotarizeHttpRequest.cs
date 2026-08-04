@@ -23,4 +23,8 @@ public sealed record NotarizeHttpRequest
     /// <summary>Chain ID EIP-155 della rete EVM di destinazione (obbligatorio, es. 80002, 11155111).</summary>
     [JsonPropertyName("chain_id")]
     public int? ChainId { get; init; }
+
+    /// <summary>Token Cloudflare Turnstile emesso dal widget (obbligatorio, verificato server-side).</summary>
+    [JsonPropertyName("turnstile_token")]
+    public string? TurnstileToken { get; init; }
 }

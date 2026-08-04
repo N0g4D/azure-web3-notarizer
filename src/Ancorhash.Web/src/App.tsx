@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Turnstile } from '@marsidev/react-turnstile'
+import type { TurnstileInstance } from '@marsidev/react-turnstile'
 import { FileDropzone } from './components/FileDropzone'
 import { Spinner } from './components/Spinner'
 import { ApiError, extract, getChains, notarize } from './lib/api'
 import type { Chain, ExtractResponse, NotarizeResponse } from './lib/api'
 import { sha256Hex } from './lib/hash'
+
+/** Sitekey pubblica Cloudflare Turnstile (dal bundle Vite). */
+const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY as
+  | string
+  | undefined
 
 /**
  * Block explorer per chain id: il backend espone solo chain_id e nome,
@@ -118,6 +125,10 @@ function App() {
     void loadChains()
   }, [loadChains])
 
+  // Token anti-bot Turnstile: monouso, richiesto per ogni notarizzazione.
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const turnstileRef = useRef<TurnstileInstance | null>(null)
+
   const selectedChain =
     chainsState.kind === 'ready'
       ? chainsState.chains.find((c) => c.chain_id === selectedChainId)
@@ -169,6 +180,9 @@ function App() {
     if (phase.kind !== 'preview' && phase.kind !== 'error') return
     const { fileName, hash, extraction } = phase
     if (!hash || extraction === null || selectedChainId === null) return
+    // Con Turnstile configurato il token è obbligatorio; senza sitekey
+    // (solo dev) si prosegue e sarà il backend a respingere con 403.
+    if (TURNSTILE_SITEKEY !== undefined && turnstileToken === null) return
 
     setPhase({ kind: 'submitting', fileName, hash, extraction })
     try {
@@ -177,6 +191,7 @@ function App() {
         document_hash: hash,
         wallet_address: MOCK_WALLET_ADDRESS,
         chain_id: selectedChainId,
+        turnstile_token: turnstileToken ?? '',
       })
       setPhase({ kind: 'success', fileName, hash, extraction, result })
     } catch (error) {
@@ -185,10 +200,17 @@ function App() {
           ? error.message
           : 'Backend non raggiungibile. Verifica che le Azure Functions siano in esecuzione su localhost:7071.'
       setPhase({ kind: 'error', fileName, hash, extraction, message })
+    } finally {
+      // Il token è monouso: forziamo un nuovo challenge per il prossimo tentativo.
+      setTurnstileToken(null)
+      turnstileRef.current?.reset()
     }
-  }, [phase, selectedChainId])
+  }, [phase, selectedChainId, turnstileToken])
 
-  const reset = useCallback(() => setPhase({ kind: 'idle' }), [])
+  const reset = useCallback(() => {
+    setPhase({ kind: 'idle' })
+    setTurnstileToken(null)
+  }, [])
 
   const isBusy = phase.kind === 'analyzing' || phase.kind === 'submitting'
   const showPreview =
@@ -402,10 +424,31 @@ function App() {
           phase.kind === 'submitting' ||
           (phase.kind === 'error' && phase.hash !== '')) && (
           <div className="mt-6">
+            {TURNSTILE_SITEKEY ? (
+              <div className="mb-4">
+                <Turnstile
+                  ref={turnstileRef}
+                  siteKey={TURNSTILE_SITEKEY}
+                  options={{ theme: 'light', size: 'flexible' }}
+                  onSuccess={(token) => setTurnstileToken(token)}
+                  onExpire={() => setTurnstileToken(null)}
+                  onError={() => setTurnstileToken(null)}
+                />
+              </div>
+            ) : (
+              <p className="mb-4 text-xs text-neutral-400">
+                Turnstile non configurato (VITE_TURNSTILE_SITEKEY mancante): la
+                verifica anti-bot è disabilitata.
+              </p>
+            )}
             <button
               type="button"
               onClick={handleNotarize}
-              disabled={isBusy || selectedChainId === null}
+              disabled={
+                isBusy ||
+                selectedChainId === null ||
+                (TURNSTILE_SITEKEY !== undefined && turnstileToken === null)
+              }
               className="inline-flex items-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {phase.kind === 'submitting' ? (
