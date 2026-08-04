@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry;
+using OpenTelemetry.Logs;
 
 var builder = FunctionsApplication.CreateBuilder(args);
 
@@ -30,8 +31,13 @@ if (!string.IsNullOrWhiteSpace(keyVaultUri))
         new DefaultAzureCredential());
 }
 
+// host.json imposta telemetryMode=OpenTelemetry: senza un exporter registrato
+// i log entrano nella pipeline OTel e non vengono emessi da nessuna parte
+// (nessun output su console durante `func start`). Il console exporter li rende
+// visibili in sviluppo; in cloud si riattiva .UseAzureMonitorExporter().
 builder.Services.AddOpenTelemetry()
-    .UseFunctionsWorkerDefaults();
+    .UseFunctionsWorkerDefaults()
+    .WithLogging(logging => logging.AddConsoleExporter());
     // .UseAzureMonitorExporter();
 
 builder.Services.AddMemoryCache();

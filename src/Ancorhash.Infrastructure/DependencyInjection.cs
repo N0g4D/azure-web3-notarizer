@@ -2,6 +2,7 @@ using Ancorhash.Core.Abstractions;
 using Ancorhash.Infrastructure.Blockchain;
 using Ancorhash.Infrastructure.Configuration;
 using Ancorhash.Infrastructure.DocumentIntelligence;
+using Ancorhash.Infrastructure.Pricing;
 using Ancorhash.Infrastructure.Security;
 using Azure.Core;
 using Azure.Identity;
@@ -50,6 +51,21 @@ public static class DependencyInjection
             .ValidateDataAnnotations()
             .ValidateOnStart();
         services.AddHttpClient<ITurnstileValidator, CloudflareTurnstileValidator>();
+
+        // Oracolo prezzi: HttpClient nominato (safe per il consumo da singleton)
+        // + IMemoryCache condiviso con il rate limiter.
+        services.AddMemoryCache();
+        services.AddHttpClient(CoinGeckoPriceOracleService.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.coingecko.com/api/v3/");
+            client.Timeout = TimeSpan.FromSeconds(10);
+            // CoinGecko risponde 403 alle richieste prive di User-Agent, che
+            // HttpClient non invia di default: senza questo header ogni stima
+            // costi ricade silenziosamente a 0.
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Ancorhash/1.0");
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        });
+        services.AddSingleton<IPriceOracleService, CoinGeckoPriceOracleService>();
 
         services.AddSingleton<IWeb3Factory, NethereumWeb3Factory>();
         services.AddSingleton<IWalletAddressValidator, NethereumWalletAddressValidator>();

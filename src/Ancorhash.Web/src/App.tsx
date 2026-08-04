@@ -27,6 +27,15 @@ const EXPLORER_TX_URLS: Record<number, string> = {
 /** Wallet mock del PoC (checksummato EIP-55, richiesto dal backend). */
 const MOCK_WALLET_ADDRESS = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 
+/** Suffisso di costo per il selettore: "(Gratis)" o "(~$0.02)". */
+function formatChainCost(chain: Chain): string {
+  if (chain.is_free) return '(Gratis)'
+  if (chain.estimated_cost_usd <= 0) return '(costo n/d)'
+  const rounded = chain.estimated_cost_usd.toFixed(2)
+  // Sotto il centesimo mostriamo "<$0.01" invece di "~$0.00".
+  return rounded === '0.00' ? '(<$0.01)' : `(~$${rounded})`
+}
+
 /** Reti disponibili, caricate dal backend al mount. */
 type ChainsState =
   | { kind: 'loading' }
@@ -281,7 +290,7 @@ function App() {
                     >
                       {chainsState.chains.map((chain) => (
                         <option key={chain.chain_id} value={chain.chain_id}>
-                          {chain.name}
+                          {chain.name} {formatChainCost(chain)}
                         </option>
                       ))}
                     </select>

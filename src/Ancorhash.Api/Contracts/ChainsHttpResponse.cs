@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Ancorhash.Infrastructure.Configuration;
 
 namespace Ancorhash.Api.Contracts;
 
@@ -11,11 +10,20 @@ public sealed record ChainInfo
 
     [JsonPropertyName("name")]
     public required string Name { get; init; }
+
+    /// <summary>Costo stimato della notarizzazione in USD (0 per le testnet).</summary>
+    [JsonPropertyName("estimated_cost_usd")]
+    public required decimal EstimatedCostUsd { get; init; }
+
+    /// <summary>True se la rete è una testnet: notarizzazione gratuita.</summary>
+    [JsonPropertyName("is_free")]
+    public required bool IsFree { get; init; }
 }
 
 /// <summary>
-/// Risposta 200 di GET /api/v1/chains. Espone SOLO chain_id e nome:
-/// gli RPC URL (con eventuali API key) e i segreti non escono mai dal backend.
+/// Risposta 200 di GET /api/v1/chains. Espone SOLO dati pubblici (chain_id,
+/// nome, stima costo): gli RPC URL (con eventuali API key) e i segreti non
+/// escono mai dal backend.
 /// </summary>
 public sealed record ChainsHttpResponse
 {
@@ -25,17 +33,8 @@ public sealed record ChainsHttpResponse
     [JsonPropertyName("chains")]
     public required IReadOnlyList<ChainInfo> Chains { get; init; }
 
-    public static ChainsHttpResponse From(BlockchainOptions options) => new()
+    public static ChainsHttpResponse From(IReadOnlyList<ChainInfo> chains) => new()
     {
-        Chains =
-        [
-            .. options.Networks
-                .Select(network => new ChainInfo
-                {
-                    ChainId = network.Key,
-                    Name = network.Value.Name ?? $"Chain {network.Key}",
-                })
-                .OrderBy(chain => chain.Name, StringComparer.OrdinalIgnoreCase),
-        ],
+        Chains = chains,
     };
 }

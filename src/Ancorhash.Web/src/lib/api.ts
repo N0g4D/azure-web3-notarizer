@@ -31,6 +31,8 @@ export interface ExtractResponse {
 export interface Chain {
   chain_id: number
   name: string
+  estimated_cost_usd: number
+  is_free: boolean
 }
 
 interface ChainsResponse {

@@ -10,6 +10,18 @@ public sealed class NetworkConfig
 
     /// <summary>Nome leggibile del network (solo per logging/diagnostica).</summary>
     public string? Name { get; init; }
+
+    /// <summary>
+    /// Identificativo CoinGecko della coin nativa (es. "ethereum", "matic-network"),
+    /// usato dall'oracolo per la stima costi in USD. Irrilevante per le testnet.
+    /// </summary>
+    public string? NativeCoinId { get; init; }
+
+    /// <summary>
+    /// True se è una testnet: la notarizzazione è gratuita (il gas non ha
+    /// valore reale) e la stima costi restituisce 0.
+    /// </summary>
+    public bool IsTestnet { get; init; }
 }
 
 /// <summary>

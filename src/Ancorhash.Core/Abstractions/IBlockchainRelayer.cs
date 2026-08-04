@@ -20,4 +20,17 @@ public interface IBlockchainRelayer
         string walletAddress,
         string documentHash,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stima il costo in USD di una notarizzazione sulla rete indicata:
+    /// (gas limit stimato × gas price corrente) convertito in USD tramite
+    /// l'oracolo dei prezzi. Per le testnet restituisce 0 (gas senza valore).
+    /// </summary>
+    /// <param name="chainId">Chain ID EIP-155 della rete EVM.</param>
+    /// <returns>Costo stimato in USD (0 per le testnet).</returns>
+    /// <exception cref="Exceptions.UnsupportedChainException">Chain id non configurato.</exception>
+    /// <exception cref="Exceptions.BlockchainUnavailableException">Nodo RPC non raggiungibile.</exception>
+    Task<decimal> EstimateFiatCostAsync(
+        int chainId,
+        CancellationToken cancellationToken = default);
 }
