@@ -1,0 +1,12 @@
+/**
+ * Hashing lato client con Web Crypto API nativa (window.crypto.subtle).
+ * Pattern Zero Data Leakage: il file è letto in memoria nel browser e
+ * non viene MAI inviato al backend — viaggia solo il suo hash SHA-256.
+ */
+export async function sha256Hex(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  const digest = await crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
