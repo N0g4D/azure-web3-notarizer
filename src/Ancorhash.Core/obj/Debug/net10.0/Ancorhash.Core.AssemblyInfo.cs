@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Ancorhash.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+53bcf2a25ba91e1f9c94911482ae06f9af949af7")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fbd28524419699f66c316dad23480140f954d26a")]
 [assembly: System.Reflection.AssemblyProductAttribute("Ancorhash.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Ancorhash.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
