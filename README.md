@@ -1,314 +1,167 @@
-# azure-web3-notarizer
+# Ancorhash
 
-**API-first middleware bridging Azure AI Document Intelligence with the Ancorhash Web3 notarization engine.**
+**Enterprise Web3 Document Notarization platform. Zero Data Leakage, Gas-Sponsored, Fiat-Ready.**
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
 [![Ethereum](https://img.shields.io/badge/Ethereum-3C3C3D?logo=ethereum&logoColor=white)](https://ethereum.org)
 [![Azure AI](https://img.shields.io/badge/Azure%20AI-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/ai-document-intelligence)
-[![Tests](https://img.shields.io/badge/tests-15%20passed-brightgreen?logo=pytest&logoColor=white)]()
-[![License](https://img.shields.io/badge/license-Proprietary-red)]()
 
 ---
 
-## What is this repository?
+## What is Ancorhash?
 
-This repository is a **stateless, API-first middleware** that wires together two
-independent building blocks of a larger product:
+Ancorhash is a B2B SaaS platform designed to bring cryptographic proof of existence and data integrity to the Enterprise world (Banks, Healthcare, Public Administration) without the compliance and UX hurdles typical of Web3 applications.
 
-1. **Ancorhash** — our **proprietary Web3 notarization engine**. Ancorhash is the
-   component that hashes the raw file bytes with SHA-256 and broadcasts an
-   immutable, timestamped transaction on the **Ethereum blockchain**. Ancorhash
-   *is* the cryptographic core: proof of existence, tamper detection,
-   non-repudiation. Nothing more, nothing less.
-2. **Azure AI Document Intelligence** — a commodity OCR / field-extraction
-   service used to read structured data from PDFs (ISO 9001 certificates, audit
-   reports, compliance records).
+Ancorhash allows users to timestamp and notarize documents on EVM-compatible blockchains (Ethereum, Polygon) providing mathematical certainty that a document existed at a specific time and has not been altered since. 
 
-The code in this repo (`azure-web3-notarizer`) is **neither** of those two
-things on its own. It is the **glue layer**: a thin, secure, async HTTP surface
-that orchestrates Azure on one side and the Ancorhash engine on the other,
-exposing them as atomic and composite REST endpoints.
-
-```
-                      ┌──────────────────────────────────┐
-PDF URL ──▶ this API ─┤                                  │──▶ extracted_data
-                      │  Azure AI Document Intelligence  │
-                      └──────────────────────────────────┘
-                      ┌──────────────────────────────────┐
-PDF URL ──▶ this API ─┤   Ancorhash engine               │──▶ doc_hash + tx_hash
-                      │   (SHA-256 raw bytes → Ethereum) │
-                      └──────────────────────────────────┘
-```
-
-### The bigger picture: where this middleware lives
-
-This middleware is designed to run **under the hood** of a future **Power App**
-gestionale (commercial name TBD) targeted at the **Enterprise** market. That
-Power App will live on **Dataverse**, manage document lifecycle, and delegate
-both OCR and on-chain notarization to this API via Power Automate.
-
-```
-   ┌─────────────────────┐    ┌─────────────────────┐    ┌──────────────────────┐
-   │  Power App + Data-  │───▶│  this middleware    │───▶│  Ancorhash engine    │
-   │  verse (Frontend,   │    │  (azure-web3-       │    │  (Web3 / Ethereum)   │
-   │   Enterprise B2B)   │    │   notarizer)        │    │                      │
-   └─────────────────────┘    │                     │───▶│  Azure AI Doc Intel  │
-                              └─────────────────────┘    └──────────────────────┘
-        product surface             this repository           proprietary engine
-                                                              + commodity OCR
-```
-
-The Power App is the **product the customer sees**. Ancorhash is the
-**proprietary differentiator** that makes the product trustworthy. This
-middleware is the **integration seam** that lets the two talk without
-coupling.
-
-## Design Philosophy
-
-- **Strict separation of concerns.** Ancorhash is *not* this repo. Ancorhash is
-  the Web3 engine. This repo is the API-first middleware that *uses* Ancorhash
-  and *uses* Azure. Treat the boundaries as load-bearing — they are what makes
-  the engine reusable in other surfaces beyond the future Power App.
-- **API-first, not webhook-first.** Three orthogonal endpoints (`/notarize`,
-  `/extract`, `/workflows/process-and-notarize`) so callers consume only what
-  they need. The composite workflow is just sugar over the atomic ones.
-- **Zero state.** No database. No cache. No queue. No filesystem writes. The
-  middleware is a pure function: request in, response out. Persistence belongs
-  to Dataverse upstream and to Ethereum downstream.
-- **Azure is replaceable, Ancorhash is not.** OCR is a commodity choice; the
-  Web3 anchor is the value. If a trade-off arises, the integrity of the
-  Ancorhash side always wins.
-- **Every component exists because it must.** No speculative abstractions, no
-  hypothetical knobs.
+### The Enterprise Differentiators
+1. **Zero Data Leakage:** Due to GDPR and corporate compliance, sensitive documents (contracts, medical records) cannot be uploaded to third-party cloud services. Ancorhash computes the SHA-256 cryptographic hash of the file **locally inside the user's browser**. Only the 32-byte hash is sent to the backend. The document never leaves the user's device.
+2. **Gas-Sponsored Relayer:** Corporate clients cannot manage crypto wallets, private keys, or hold volatile cryptocurrencies on their balance sheets. Ancorhash uses a Relayer architecture: the backend signs and pays for the blockchain transaction (Gas) on behalf of the user.
+3. **Fiat Billing (Stripe-Ready):** Users pay a predictable, standard fiat fee (e.g., in USD/EUR) via credit card for the service. The backend orchestrates a real-time decentralized pricing oracle to calculate the gas cost and applies a fixed service markup.
 
 ---
 
-## Architecture
+## System Architecture
+
+The V2 architecture separates the local hashing and intelligence layer from the Web3 transactional layer, ensuring complete data privacy.
 
 ```mermaid
 graph TB
-    PA["Power App<br/><i>B2B Document Manager</i>"]
-    AUTO["Power Automate<br/><i>Orchestrator</i>"]
-    API["<b>azure-web3-notarizer</b><br/>Middleware API (this repo)"]
-    AZ["Azure AI<br/>Document Intelligence"]
-    ETH["<b>Ancorhash engine</b><br/>Web3 / Ethereum<br/>Sepolia / Mainnet"]
-    DV["Dataverse<br/><i>Document Store</i>"]
+    USER["User / Enterprise Client"]
+    BROWSER["<b>React Frontend</b><br/><i>Local SHA-256 Hashing</i>"]
+    API["<b>.NET 8 Backend</b><br/><i>API & Relayer Engine</i>"]
+    AZURE["<b>Azure AI</b><br/><i>Document Intelligence</i>"]
+    STRIPE["<b>Stripe</b><br/><i>Fiat Billing Mock</i>"]
+    ORACLE["<b>CoinGecko</b><br/><i>Pricing Oracle</i>"]
+    ETH["<b>Blockchain (EVM)</b><br/><i>Sepolia / Polygon</i>"]
 
-    PA -->|"Upload PDF"| DV
-    DV -->|"Trigger"| AUTO
-    AUTO -->|"POST /api/v1/...<br/>PDF URL + wallet"| API
-    API -->|"Extract fields"| AZ
-    API -->|"SHA-256 raw bytes<br/>+ 0 ETH tx"| ETH
-    API -->|"tx_hash + extracted_data"| AUTO
-    AUTO -->|"Update record"| DV
-    DV -->|"Display tx_hash"| PA
+    USER -->|"Drags & Drops PDF"| BROWSER
+    BROWSER -.->|"Opt-in Extraction"| AZURE
+    BROWSER -->|"1. Request Chain Costs"| API
+    API -->|"Fetch USD Price"| ORACLE
+    API -->|"Simulate Gas"| ETH
+    BROWSER -->|"2. Pay Fiat Checkout"| STRIPE
+    BROWSER -->|"3. POST /notarize<br/>(SHA-256 Hash + Turnstile)"| API
+    API -->|"Broadcast 0 ETH Tx<br/>Hash in Data Field"| ETH
 
-    style API fill:#1a1a2e,stroke:#e94560,color:#fff
+    style BROWSER fill:#20232a,stroke:#61dafb,color:#fff
+    style API fill:#512bd4,stroke:#512bd4,color:#fff
     style ETH fill:#3C3C3D,stroke:#627EEA,color:#fff
-    style AZ fill:#0078D4,stroke:#0078D4,color:#fff
-    style PA fill:#742774,stroke:#742774,color:#fff
-    style AUTO fill:#0066FF,stroke:#0066FF,color:#fff
-    style DV fill:#00A4EF,stroke:#00A4EF,color:#fff
+    style AZURE fill:#0078D4,stroke:#0078D4,color:#fff
+    style STRIPE fill:#635bff,stroke:#635bff,color:#fff
 ```
 
-### API Surface (API-first)
+### The Notarization Flow (Sequence)
 
-Three atomic endpoints, each protected by `X-API-Key`. Pick the one
-that matches the operation you actually need — pay only for what you use.
-
+```mermaid
+sequenceDiagram
+    participant B as React Frontend
+    participant A as .NET Backend API
+    participant O as CoinGecko Oracle
+    participant R as EVM Blockchain Node
+    
+    B->>B: Computes SHA-256 locally (Zero Data Leakage)
+    B->>A: GET /api/v1/chains (Request pricing)
+    A->>O: Fetch MATIC/ETH USD price
+    A->>R: Estimate Gas Limit & Price
+    A-->>B: Returns supported chains & dynamic USD costs
+    B->>B: Displays Checkout Mock (Gas Cost + Service Fee)
+    B->>A: POST /api/v1/notarize (Hash, Turnstile Token, ChainId)
+    A->>A: Validate Anti-bot & IP Rate Limit
+    A->>R: Broadcast EIP-1559 Transaction (Data = Hash)
+    R-->>A: Transaction Hash
+    A-->>B: Success Response + Etherscan Link
 ```
-POST /api/v1/notarize                       Download → SHA-256 → Ethereum
-POST /api/v1/extract                        Download → Azure AI OCR
-POST /api/v1/workflows/process-and-notarize Download → (Azure ∥ Web3)  ← composite
-```
-
-| Endpoint | Input | Calls Azure? | Calls Web3? | Returns |
-|:---|:---|:---:|:---:|:---|
-| `/api/v1/notarize` | `document_id`, `document_url`, `wallet_address` | no | yes | `status`, `doc_hash`, `tx_hash` |
-| `/api/v1/extract` | `document_id`, `document_url` | yes | no | `status`, `extracted_data` |
-| `/api/v1/workflows/process-and-notarize` | `document_id`, `document_url`, `wallet_address` | yes | yes | `status`, `doc_hash`, `tx_hash`, `extracted_data` |
-
-### Pipeline Flow (composite workflow)
-
-```
-POST /api/v1/workflows/process-and-notarize
-│
-├─ Auth ─── X-API-Key header (constant-time comparison)
-├─ Validate ─── Pydantic strict: document_id, document_url, wallet_address (EIP-55)
-│
-├─ Phase A ─── Download PDF (streaming, 10 MB cap, SSRF protection)
-├─ Phase B ─── SHA-256 hash on raw file bytes (deterministic, Azure-independent)
-├─ Phase C ∥ D ─── Azure AI Document Intelligence  ∥  Ethereum EIP-1559 tx
-│                  (field extraction)              (0 ETH, hash in data field)
-│                  └─── asyncio.gather (parallel) ───┘
-│
-└─ Response ─── { status, document_id, doc_hash, tx_hash, extracted_data }
-```
-
-### Technology Stack
-
-| Layer | Technology | Purpose |
-|:---|:---|:---|
-| **Runtime** | Python 3.12+, FastAPI, Uvicorn | Async API server |
-| **Validation** | Pydantic v2, Pydantic-Settings | Strict schema + secrets management (`SecretStr`) |
-| **Blockchain** | Web3.py | EIP-1559 transactions, Sepolia & Mainnet |
-| **Document AI** | Azure AI Document Intelligence | OCR & field extraction (prebuilt-layout) |
-| **Resilience** | Tenacity, httpx | Exponential backoff, async streaming HTTP |
-| **Security** | SSRF guard, streaming OOM protection | IP validation, chunked download with hard cap |
 
 ---
 
-## Key Features
+## Technology Stack
 
-**Deterministic Notarization (powered by Ancorhash)** — The middleware delegates hashing and on-chain anchoring to the Ancorhash engine, which computes SHA-256 on the raw file bytes (never on extracted data). Same file, same hash, always — regardless of Azure or any intermediary.
+### Backend (`src/Ancorhash.Api` / `Core` / `Infrastructure`)
+Built with **C# .NET 8 (Isolated Azure Functions)** for maximum scalability and serverless execution.
+- **Blockchain:** `Nethereum` for RPC interactions and EIP-1559 transaction building.
+- **Security:** `Cloudflare Turnstile` server-side validation and custom IP-based `RateLimitingMiddleware` using `IMemoryCache` to prevent wallet draining.
+- **Pricing Oracle:** Real-time fiat conversion via `CoinGecko` API, heavily cached and designed to fail-soft (fallback to $0) in case of rate limits.
+- **Observability:** `OpenTelemetry` configured for Enterprise-grade logging.
 
-**Zero-State Middleware** — No database, no Redis, no Celery, no filesystem writes. This API is a pure function: PDF URL in, structured response out. Persistence belongs to Dataverse upstream and to Ethereum (via Ancorhash) downstream.
-
-**Security Hardened** — Secrets wrapped in `SecretStr` (never leaked in logs or tracebacks), SSRF protection on document URLs, streaming download with hard 10 MB cap, constant-time API key comparison.
-
-**Microsoft Ecosystem Integration** — This middleware is built to run under the hood of a future Enterprise Power App on Dataverse, orchestrated by Power Automate. Power Automate calls the middleware, which fans out to Azure AI for OCR and to the Ancorhash engine for notarization, then returns a single structured payload for the Dataverse record.
-
-**Blockchain Guarantees (via the Ancorhash engine)** — Each call to the notarization path produces an Ethereum transaction containing the document hash. This provides:
-- **Proof of existence** — the document existed at the block timestamp
-- **Integrity** — any modification produces a different hash
-- **Non-repudiation** — the notarizer wallet cryptographically signed the transaction
+### Frontend (`src/Ancorhash.Web`)
+Built with **React, TypeScript, Vite, and Tailwind CSS**.
+- **Local Hashing:** Fast, memory-safe client-side SHA-256 generation using `crypto.subtle`.
+- **UI/UX:** Minimalist, monochromatic design optimized for B2B dashboards. Includes a Mock Checkout interface for live product demonstrations.
+- **Anti-bot:** `@marsidev/react-turnstile` integrated seamlessly into the submission flow.
 
 ---
 
-## Quick Start
+## Local Development Setup
 
-### 1. Clone & Install
+### Prerequisites
+- Node.js 20+
+- .NET 8 SDK
+- Azure Functions Core Tools (`func`)
 
+### 1. Backend Setup
+Navigate to the API project and restore dependencies:
 ```bash
-git clone https://github.com/N0g4D/azure-web3-notarizer.git
-cd azure-web3-notarizer
-
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd src/Ancorhash.Api
+dotnet restore
 ```
-
-### 2. Configure
-
+Create a `local.settings.json` file. Ensure you configure a valid Relayer Private Key (with funds on the selected networks) and standard RPC URLs:
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Logging__LogLevel__Default": "Information",
+    "Evm__RelayerPrivateKey": "0xYOUR_PRIVATE_KEY",
+    "Turnstile__SecretKey": "1x0000000000000000000000000000000AA",
+    "Blockchain__Networks__11155111__RpcUrl": "https://sepolia.infura.io/v3/...",
+    "Blockchain__Networks__11155111__Name": "Ethereum Sepolia",
+    "Blockchain__Networks__11155111__NativeCoinId": "ethereum",
+    "Blockchain__Networks__11155111__IsTestnet": "true"
+  },
+  "Host": {
+    "CORS": "http://localhost:5173",
+    "CORSCredentials": false
+  }
+}
+```
+Run the backend:
 ```bash
-cp .env.example .env
+dotnet run
 ```
 
-| Variable | Description |
-|:---|:---|
-| `API_KEY` | Webhook authentication secret (shared with Power Automate) |
-| `RPC_URL` | Ethereum JSON-RPC endpoint (Infura, Alchemy, etc.) |
-| `PRIVATE_KEY` | Notarizer wallet private key (`0x` + 64 hex chars) |
-| `AZURE_ENDPOINT` | Azure AI Document Intelligence endpoint |
-| `AZURE_KEY` | Azure AI Document Intelligence API key |
-
-> **Security.** The `.env` file is gitignored. All secrets are loaded via `pydantic-settings` and wrapped in `SecretStr` — they never appear in logs, error messages, or HTTP responses.
-
-### 3. Run
-
+### 2. Frontend Setup
+In a new terminal, navigate to the Web project:
 ```bash
-uvicorn app.main:app --reload
+cd src/Ancorhash.Web
+npm install
 ```
-
-| Endpoint | Method | Description |
-|:---|:---|:---|
-| `/api/v1/notarize` | `POST` | Atomic: download + SHA-256 + Ethereum notarization (no Azure) |
-| `/api/v1/extract` | `POST` | Atomic: download + Azure AI field extraction (no Web3) |
-| `/api/v1/workflows/process-and-notarize` | `POST` | Composite workflow: parallel Azure ∥ Web3 |
-| `/health` | `GET` | Liveness probe |
-| `/docs` | `GET` | Interactive API documentation (Swagger UI) |
-
-### 4. Test
-
+Create a `.env` file for the Turnstile public test key:
+```env
+VITE_TURNSTILE_SITEKEY="1x00000000000000000000AA"
+```
+Start the Vite development server:
 ```bash
-pytest tests/ -v
+npm run dev
 ```
-
-All 15 tests are fully isolated — no real calls to Azure or Ethereum.
-
----
-
-## Project Structure
-
-```
-app/
-├── api/
-│   ├── dependencies.py         # API Key auth (X-API-Key, constant-time)
-│   └── v1/
-│       └── endpoints.py        # POST /notarize, /extract, /workflows/process-and-notarize
-├── core/
-│   ├── config.py               # Pydantic BaseSettings + SecretStr + validators
-│   └── logger.py               # Structured JSON logging
-├── models/
-│   └── schemas.py              # NotarizeRequest, ExtractRequest, FullProcessRequest (+ responses)
-├── services/
-│   ├── azure_client.py         # SSRF-safe PDF download + Azure AI extraction
-│   └── web3_client.py          # SHA-256 hashing + Ethereum notarization
-└── main.py                     # FastAPI entrypoint
-
-tests/
-├── conftest.py                 # Fixtures: fake env, async client, valid payloads
-└── test_endpoints.py           # 15 tests: auth, validation, SSRF, OOM, atomic + workflow happy paths
-
-docs/
-├── ARCHITECTURE.md             # System architecture + ISV roadmap
-└── SANITIZATION_TODO.md        # Security hardening checklist
-```
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## Security
+## Security & Protections
 
-| Measure | Implementation |
-|:---|:---|
-| **Secret management** | `SecretStr` for all keys — `repr()` returns `'**********'` |
-| **Auth** | `X-API-Key` header with `secrets.compare_digest` (constant-time) |
-| **SSRF protection** | HTTPS-only, DNS resolution against private/loopback IPs |
-| **OOM protection** | Streaming download with 64 KB chunks, hard abort at 10 MB |
-| **Input validation** | Pydantic strict mode, EIP-55 checksum, URL scheme enforcement |
-| **Log safety** | No `traceback.format_exc()`, error messages truncated, no secrets in output |
+Since Ancorhash pays the transaction fees, the `/api/v1/notarize` endpoint is a highly critical surface. It is protected by a multi-layered defense strategy:
+1. **IP Rate Limiting:** Discards requests aggressively at the middleware layer if an IP exceeds the allowed threshold (HTTP 429), saving CPU and API calls.
+2. **Cloudflare Turnstile:** Blocks headless browsers and automated scripts via cryptographic challenges (HTTP 403).
+3. **Fail-Safe Orchestration:** Any failure in the RPC nodes or pricing oracles is caught, logged via OpenTelemetry, and handled gracefully without crashing the host process.
 
 ---
 
-## Roadmap
-
-The product is built in three distinct layers — engine, middleware, frontend —
-and this repository is only the middle one.
-
-| Layer | Component | Status | Description |
-|:---|:---|:---|:---|
-| **Engine** | **Ancorhash** (Web3 notarization) | Done | Proprietary core: SHA-256 on raw bytes + EIP-1559 transaction on Ethereum (Sepolia validated, Mainnet ready). Lives inside `app/services/web3_client.py` of this repo today, designed to be reusable from any surface. |
-| **Middleware** | `azure-web3-notarizer` (this repo) | Done | API-first FastAPI bridge between Ancorhash and Azure AI Document Intelligence. Atomic + composite endpoints, security hardened, 15 tests. |
-| **Frontend** | Enterprise Power App on Dataverse (name TBD) | Next | B2B document manager: upload PDF, store metadata in Dataverse, call this middleware via Power Automate, persist `doc_hash` + `tx_hash` on the record. Target: Enterprise market. |
-| **Go-to-market** | Microsoft ISV Success submission | Planned | Submit the full vertical (Power App + Dataverse + this middleware + Ancorhash engine) to the Microsoft ISV Success Program. |
+## Historical Note: The V1 PoC
+Ancorhash originally started as a Python 3.12+ and FastAPI project (`azure-web3-notarizer`)[cite: 1]. That initial proof-of-concept acted as a pure API-first middleware[cite: 1]. However, it relied on downloading the actual PDF payload to the server for processing[cite: 1]. To meet stringent Enterprise data privacy requirements, the architecture was entirely reimagined and rewritten in .NET and React (V2) to achieve true Zero Data Leakage.
 
 ---
-
-## How It Works (for Verifiers)
-
-To verify a document against its on-chain notarization:
-
-```bash
-# 1. Compute the SHA-256 of the original file
-shasum -a 256 document.pdf
-# Output: b9746dbcf29ac147e8fa056fbba5f3a667be2e34c559cd139d62d8915d51c140
-
-# 2. Look up the Ethereum transaction on Etherscan
-# The 'Input Data' field contains: 0x + the same hash
-
-# 3. If they match → the document is authentic and unmodified
-#    If they don't → the document has been tampered with
-```
-
----
-
-## License
-
-Proprietary. All rights reserved.
-
----
-
 <p align="center">
-  <b>azure-web3-notarizer</b> — the API-first middleware powered by the <b>Ancorhash</b> Web3 engine.
+  <b>Ancorhash</b> — Trust through Cryptography.
 </p>
