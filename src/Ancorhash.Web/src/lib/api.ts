@@ -20,12 +20,23 @@ export interface NotarizeResponse {
   chain_id: number
 }
 
+/** Parametri da campo del verbale; null = non rilevato nel documento. */
+export interface WaterSamplingFieldData {
+  corso_acqua: string | null
+  data_prelievo: string | null
+  temperatura_acqua_c: number | null
+  ph: number | null
+  ossigeno_disciolto_mg_l: number | null
+  has_any_value: boolean
+}
+
 export interface ExtractResponse {
   status: string
   file_name: string
   content: string
   key_value_pairs: Record<string, string>
   page_count: number
+  field_data: WaterSamplingFieldData
 }
 
 export interface Chain {

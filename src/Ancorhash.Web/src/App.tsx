@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import type { TurnstileInstance } from '@marsidev/react-turnstile'
+import { FieldDataCard } from './components/FieldDataCard'
 import { FileDropzone } from './components/FileDropzone'
 import { Spinner } from './components/Spinner'
 import { ApiError, extract, getChains, notarize } from './lib/api'
@@ -381,7 +382,7 @@ function App() {
                   {phase.fileName}
                 </span>
                 {isAiEnabled
-                  ? ': hash locale e estrazione AI in parallelo…'
+                  ? ': hash locale e analisi AI in corso…'
                   : ': calcolo dell’hash nel browser…'}
               </span>
             </div>
@@ -438,24 +439,18 @@ function App() {
 
                 {phase.extraction?.status === 'ok' ? (
                   <div className="mt-3 space-y-3">
-                    {Object.keys(phase.extraction.data.key_value_pairs).length >
-                      0 && (
-                      <dl className="space-y-1 text-xs">
-                        {Object.entries(
-                          phase.extraction.data.key_value_pairs,
-                        ).map(([key, value]) => (
-                          <div key={key} className="flex gap-2">
-                            <dt className="shrink-0 font-medium text-neutral-500">
-                              {key}
-                            </dt>
-                            <dd className="text-neutral-900">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                    <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs leading-relaxed text-neutral-700">
-                      {phase.extraction.data.content || '(nessun testo estratto)'}
-                    </pre>
+                    <FieldDataCard data={phase.extraction.data.field_data} />
+
+                    {/* Testo OCR grezzo: utile in debug, fuori dalla vista principale. */}
+                    <details className="group">
+                      <summary className="cursor-pointer list-none text-xs text-neutral-400 underline-offset-2 hover:text-neutral-600 hover:underline">
+                        Mostra il testo integrale riconosciuto
+                      </summary>
+                      <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs leading-relaxed text-neutral-600">
+                        {phase.extraction.data.content ||
+                          '(nessun testo estratto)'}
+                      </pre>
+                    </details>
                   </div>
                 ) : phase.extraction?.status === 'opt-out' ? (
                   <p className="mt-3 text-xs text-neutral-400">

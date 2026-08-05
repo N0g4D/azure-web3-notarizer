@@ -16,6 +16,7 @@ namespace Ancorhash.Api.Functions;
 /// </summary>
 public sealed class ExtractFunction(
     IDocumentExtractionService extractionService,
+    IWaterSamplingReportParser reportParser,
     ILogger<ExtractFunction> logger)
 {
     [Function("Extract")]
@@ -54,10 +55,15 @@ public sealed class ExtractFunction(
             var result = await extractionService.ExtractAsync(
                 stream, file.ContentType, cancellationToken);
 
+            // Parsing di dominio: dal testo OCR ai parametri da campo tipizzati.
+            // Non solleva eccezioni: al più restituisce un report vuoto.
+            var report = reportParser.Parse(result.Content, result.KeyValuePairs);
+
             logger.LogInformation(
-                "Extract completata per {FileName} ({Length} bytes)",
-                file.FileName, file.Length);
-            return new OkObjectResult(ExtractHttpResponse.From(file.FileName, result));
+                "Extract completata per {FileName} ({Length} bytes), parametri rilevati: {HasFieldData}",
+                file.FileName, file.Length, report.HasAnyValue);
+            return new OkObjectResult(
+                ExtractHttpResponse.From(file.FileName, result, report));
         }
         catch (DocumentExtractionValidationException ex)
         {

@@ -10,6 +10,7 @@ public static class DependencyInjection
     public static IServiceCollection AddAncorhashCore(this IServiceCollection services)
     {
         services.AddSingleton<INotarizationService, NotarizationService>();
+        services.AddSingleton<IWaterSamplingReportParser, WaterSamplingReportParser>();
         return services;
     }
 }
