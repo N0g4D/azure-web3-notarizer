@@ -1,4 +1,25 @@
-# ── Python ────────────────────────────────────────────────────────────
+# ── .NET / Azure Functions ───────────────────────────────────────────
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.userprefs
+.vs/
+# Segreti e configurazione locale delle Functions (mai versionare)
+local.settings.json
+appsettings.Development.json
+
+# ── Node / React / Vite ──────────────────────────────────────────────
+node_modules/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Python (prototipo legacy) ────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
@@ -30,6 +51,7 @@ Thumbs.db
 htmlcov/
 .coverage
 coverage.xml
+[Tt]est[Rr]esults/
 
 # ── Distribution / Build ─────────────────────────────────────────────
 dist/

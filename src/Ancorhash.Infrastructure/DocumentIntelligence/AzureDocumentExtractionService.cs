@@ -40,8 +40,29 @@ public sealed class AzureDocumentExtractionService : IDocumentExtractionService
         _options = options.Value;
         _logger = logger;
         _client = new Lazy<DocumentIntelligenceClient>(
-            () => new DocumentIntelligenceClient(new Uri(_options.Endpoint), credential),
+            () => CreateClient(credential),
             LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
+    private DocumentIntelligenceClient CreateClient(TokenCredential credential)
+    {
+        var endpoint = new Uri(_options.Endpoint);
+
+        // Keyless per default; la chiave, se configurata, resta un ripiego per
+        // ambienti dove RBAC su Entra ID non è disponibile.
+        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        {
+            _logger.LogInformation(
+                "Document Intelligence: autenticazione keyless (DefaultAzureCredential) su {Endpoint}",
+                endpoint);
+            return new DocumentIntelligenceClient(endpoint, credential);
+        }
+
+        _logger.LogWarning(
+            "Document Intelligence: autenticazione tramite chiave API su {Endpoint}. "
+            + "Preferire Managed Identity: la chiave va comunque letta da configurazione/Key Vault.",
+            endpoint);
+        return new DocumentIntelligenceClient(endpoint, new AzureKeyCredential(_options.ApiKey));
     }
 
     public async Task<DocumentExtractionResult> ExtractAsync(
