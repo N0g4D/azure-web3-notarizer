@@ -2,7 +2,7 @@
 
 **Enterprise Web3 Document Notarization platform. Zero Data Leakage, Gas-Sponsored, Fiat-Ready.**
 
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
 [![Ethereum](https://img.shields.io/badge/Ethereum-3C3C3D?logo=ethereum&logoColor=white)](https://ethereum.org)
 [![Azure AI](https://img.shields.io/badge/Azure%20AI-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/ai-document-intelligence)
@@ -26,35 +26,28 @@ Ancorhash allows users to timestamp and notarize documents on EVM-compatible blo
 
 The V2 architecture separates the local hashing and intelligence layer from the Web3 transactional layer, ensuring complete data privacy.
 
-```mermaid
-graph TB
-    USER["User / Enterprise Client"]
-    BROWSER["<b>React Frontend</b><br/><i>Local SHA-256 Hashing</i>"]
-    API["<b>.NET 8 Backend</b><br/><i>API & Relayer Engine</i>"]
-    AZURE["<b>Azure AI</b><br/><i>Document Intelligence</i>"]
-    STRIPE["<b>Stripe</b><br/><i>Fiat Billing Mock</i>"]
-    ORACLE["<b>CoinGecko</b><br/><i>Pricing Oracle</i>"]
-    ETH["<b>Blockchain (EVM)</b><br/><i>Sepolia / Polygon</i>"]
+~~~mermaid
+graph LR
+    USER["User"] -->|"Drags PDF"| BROWSER["<b>React Frontend</b><br/><i>Local Hashing</i>"]
+    
+    BROWSER -.->|"Opt-in OCR"| AZURE["<b>Azure AI</b><br/><i>Extraction</i>"]
+    BROWSER -->|"1. Check Costs"| API["<b>.NET 10 Backend</b><br/><i>Relayer Engine</i>"]
+    BROWSER -->|"2. Fiat Checkout"| STRIPE["<b>Stripe</b><br/><i>Billing Mock</i>"]
+    BROWSER -->|"3. POST /notarize"| API
 
-    USER -->|"Drags & Drops PDF"| BROWSER
-    BROWSER -.->|"Opt-in Extraction"| AZURE
-    BROWSER -->|"1. Request Chain Costs"| API
-    API -->|"Fetch USD Price"| ORACLE
-    API -->|"Simulate Gas"| ETH
-    BROWSER -->|"2. Pay Fiat Checkout"| STRIPE
-    BROWSER -->|"3. POST /notarize<br/>(SHA-256 Hash + Turnstile)"| API
-    API -->|"Broadcast 0 ETH Tx<br/>Hash in Data Field"| ETH
+    API -->|"Fetch USD Price"| ORACLE["<b>CoinGecko</b><br/><i>Oracle</i>"]
+    API -->|"Simulate & Broadcast"| ETH["<b>Blockchain</b><br/><i>EVM Node</i>"]
 
     style BROWSER fill:#20232a,stroke:#61dafb,color:#fff
     style API fill:#512bd4,stroke:#512bd4,color:#fff
     style ETH fill:#3C3C3D,stroke:#627EEA,color:#fff
     style AZURE fill:#0078D4,stroke:#0078D4,color:#fff
     style STRIPE fill:#635bff,stroke:#635bff,color:#fff
-```
+~~~
 
 ### The Notarization Flow (Sequence)
 
-```mermaid
+~~~mermaid
 sequenceDiagram
     participant B as React Frontend
     participant A as .NET Backend API
@@ -72,14 +65,14 @@ sequenceDiagram
     A->>R: Broadcast EIP-1559 Transaction (Data = Hash)
     R-->>A: Transaction Hash
     A-->>B: Success Response + Etherscan Link
-```
+~~~
 
 ---
 
 ## Technology Stack
 
 ### Backend (`src/Ancorhash.Api` / `Core` / `Infrastructure`)
-Built with **C# .NET 8 (Isolated Azure Functions)** for maximum scalability and serverless execution.
+Built with **C# .NET 10 (Isolated Azure Functions)** for maximum scalability and serverless execution.
 - **Blockchain:** `Nethereum` for RPC interactions and EIP-1559 transaction building.
 - **Security:** `Cloudflare Turnstile` server-side validation and custom IP-based `RateLimitingMiddleware` using `IMemoryCache` to prevent wallet draining.
 - **Pricing Oracle:** Real-time fiat conversion via `CoinGecko` API, heavily cached and designed to fail-soft (fallback to $0) in case of rate limits.
@@ -97,17 +90,17 @@ Built with **React, TypeScript, Vite, and Tailwind CSS**.
 
 ### Prerequisites
 - Node.js 20+
-- .NET 8 SDK
+- .NET 10 SDK
 - Azure Functions Core Tools (`func`)
 
 ### 1. Backend Setup
 Navigate to the API project and restore dependencies:
-```bash
+~~~bash
 cd src/Ancorhash.Api
 dotnet restore
-```
+~~~
 Create a `local.settings.json` file. Ensure you configure a valid Relayer Private Key (with funds on the selected networks) and standard RPC URLs:
-```json
+~~~json
 {
   "IsEncrypted": false,
   "Values": {
@@ -125,26 +118,26 @@ Create a `local.settings.json` file. Ensure you configure a valid Relayer Privat
     "CORSCredentials": false
   }
 }
-```
+~~~
 Run the backend:
-```bash
+~~~bash
 dotnet run
-```
+~~~
 
 ### 2. Frontend Setup
 In a new terminal, navigate to the Web project:
-```bash
+~~~bash
 cd src/Ancorhash.Web
 npm install
-```
+~~~
 Create a `.env` file for the Turnstile public test key:
-```env
+~~~env
 VITE_TURNSTILE_SITEKEY="1x00000000000000000000AA"
-```
+~~~
 Start the Vite development server:
-```bash
+~~~bash
 npm run dev
-```
+~~~
 Open `http://localhost:5173` in your browser.
 
 ---
@@ -159,7 +152,7 @@ Since Ancorhash pays the transaction fees, the `/api/v1/notarize` endpoint is a 
 ---
 
 ## Historical Note: The V1 PoC
-Ancorhash originally started as a Python 3.12+ and FastAPI project (`azure-web3-notarizer`)[cite: 1]. That initial proof-of-concept acted as a pure API-first middleware[cite: 1]. However, it relied on downloading the actual PDF payload to the server for processing[cite: 1]. To meet stringent Enterprise data privacy requirements, the architecture was entirely reimagined and rewritten in .NET and React (V2) to achieve true Zero Data Leakage.
+Ancorhash originally started as a Python and FastAPI project (`azure-web3-notarizer`). That initial proof-of-concept acted as a pure API-first middleware. However, it relied on downloading the actual PDF payload to the server for processing. To meet stringent Enterprise data privacy requirements, the architecture was entirely reimagined and rewritten in .NET and React (V2) to achieve true Zero Data Leakage.
 
 ---
 <p align="center">
