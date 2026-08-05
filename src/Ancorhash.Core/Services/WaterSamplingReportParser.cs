@@ -72,12 +72,28 @@ public sealed partial class WaterSamplingReportParser(
         return report;
     }
 
-    private static WaterSamplingReport ParseText(string body) => new(
-        CorsoAcqua: ParseCorsoAcqua(body),
-        DataPrelievo: ParseDataPrelievo(body),
-        TemperaturaAcquaCelsius: ParseMeasure(TemperaturaAcquaRegex(), body, -5m, 60m),
-        Ph: ParseMeasure(PhRegex(), body, 0m, 14m),
-        OssigenoDiscioltoMgL: ParseMeasure(OssigenoDiscioltoRegex(), body, 0m, 30m));
+    private static WaterSamplingReport ParseText(string rawBody)
+    {
+        var body = NormalizeBoxedDigits(rawBody);
+        return new WaterSamplingReport(
+            CorsoAcqua: ParseCorsoAcqua(body),
+            DataPrelievo: ParseDataPrelievo(body),
+            TemperaturaAcquaCelsius: ParseMeasure(TemperaturaAcquaRegex(), body, -5m, 60m),
+            Ph: ParseMeasure(PhRegex(), body, 0m, 14m),
+            OssigenoDiscioltoMgL: ParseMeasure(OssigenoDiscioltoRegex(), body, 0m, 30m));
+    }
+
+    /// <summary>
+    /// Il modulo prevede una casella per cifra, e l'OCR le restituisce come
+    /// <c>|2| |0|, |5|</c> (a volte con spazi interni: <c>| 8|</c>). Le sequenze
+    /// di caselle vengono ricomposte nel numero che rappresentano — <c>20,5</c> —
+    /// così le regole di estrazione lavorano su valori contigui.
+    /// Le caselle del modulo vuoto (<c>|__|</c>) non contengono cifre e restano
+    /// intatte, quindi continuano a non produrre alcun valore.
+    /// </summary>
+    private static string NormalizeBoxedDigits(string text) =>
+        BoxedDigitsRegex().Replace(text, match => new string(
+            match.Value.Where(c => char.IsDigit(c) || c == ',').ToArray()));
 
     /// <summary>Il risultato primario vince; il secondario riempie solo i buchi.</summary>
     private static WaterSamplingReport Merge(
@@ -100,6 +116,15 @@ public sealed partial class WaterSamplingReportParser(
 
     private static string? ParseCorsoAcqua(string content)
     {
+        // Nei moduli reali la denominazione prosegue sulla riga successiva
+        // ("Torrente" / "Polcevera"): si legge fino alla prossima etichetta.
+        var multiline = CorsoAcquaMultilineRegex().Match(content);
+        if (multiline.Success
+            && CleanTextValue(multiline.Groups["v"].Value) is { } value)
+        {
+            return value;
+        }
+
         var match = CorsoAcquaRegex().Match(content);
         return match.Success ? CleanTextValue(match.Groups["v"].Value) : null;
     }
@@ -219,16 +244,23 @@ public sealed partial class WaterSamplingReportParser(
         return true;
     }
 
-    // "Corso d'acqua <nome>" — l'apostrofo può essere dritto o tipografico.
-    // La cattura si ferma alla prossima etichetta del modulo o a fine riga.
+    // "Corso d'acqua <nome>" con valore che può proseguire a capo: si legge
+    // fino alla prossima etichetta del modulo, entro un limite prudenziale.
+    [GeneratedRegex(
+        @"Corso\s*d\s*['’`]\s*acqua\s*[:\-]?\s*(?<v>[\s\S]{0,120}?)\s*(?=Località|Localita|Comune|Provincia|Rif\.|Matrice|Stazione)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex CorsoAcquaMultilineRegex();
+
+    // Ripiego su singola riga, quando nessuna etichetta segue il valore.
     [GeneratedRegex(
         @"Corso\s*d\s*['’`]\s*acqua\s*[:\-]?\s*(?<v>[^\r\n]*?)\s*(?=Località|Localita|Comune|Provincia|Stazione|$)",
         RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex CorsoAcquaRegex();
 
     // Solo "Temperatura acqua": esclude "Temperatura aria" e "Temperatura sonda".
+    // L'unità può essere "°C" oppure il carattere unico "℃" (U+2103) usato dall'OCR.
     [GeneratedRegex(
-        @"Temperatura\s+(?:dell\s*['’]\s*)?acqua\s*[:\-]?\s*(?<v>\d{1,3}(?:[.,]\d{1,2})?)\s*°?\s*C",
+        @"Temperatura\s+(?:dell\s*['’]\s*)?acqua\s*[:\-]?\s*(?<v>\d{1,3}(?:[.,]\d{1,2})?)\s*(?:°\s*C|℃|C)",
         RegexOptions.IgnoreCase)]
     private static partial Regex TemperaturaAcquaRegex();
 
@@ -257,6 +289,10 @@ public sealed partial class WaterSamplingReportParser(
 
     [GeneratedRegex(@"\brev\s*\d", RegexOptions.IgnoreCase)]
     private static partial Regex RevisionFooterRegex();
+
+    // Sequenze di caselle una-cifra-ciascuna: |2| |0|, |5|  →  20,5
+    [GeneratedRegex(@"(?:\|\s*\d\s*\|\s*)+(?:,\s*(?:\|\s*\d\s*\|\s*)+)?")]
+    private static partial Regex BoxedDigitsRegex();
 
     // Placeholder del modulo vuoto: |__|, ____, punti di guida.
     [GeneratedRegex(@"\|_*\||_{2,}|\.{3,}")]
