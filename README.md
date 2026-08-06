@@ -1,90 +1,90 @@
 # Ancorhash — Environmental Compliance & Web3 Notarizer
 
-**Tamper-proof environmental reporting. Local hashing, blockchain anchoring, AI-extracted field parameters.**
+**Verbali ambientali a prova di manomissione. Hash calcolato in locale, ancoraggio su blockchain, parametri di campo estratti con l'AI.**
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
 [![Azure AI](https://img.shields.io/badge/Azure%20AI-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/ai-document-intelligence)
 [![Polygon](https://img.shields.io/badge/Polygon-7B3FE4?logo=polygon&logoColor=white)](https://polygon.technology/)
 
-> **Vertical branch.** This branch (`feature/azure-ai-water-sampling`) is the environmental-compliance vertical, built around the *Verbale di campionamento acque superficiali* (surface water sampling report). The generic Enterprise platform lives on [`main`](../../tree/main).
+> **Branch verticale.** Questo branch (`feature/azure-ai-water-sampling`) è la declinazione per la compliance ambientale, costruita attorno al *Verbale di campionamento acque superficiali*. La piattaforma Enterprise generica vive su [`main`](../../tree/main).
 
 ---
 
-## The Problem
+## Il problema
 
-Environmental monitoring runs on paper. A surface water sampling report is filled in by hand at the riverbank, scanned, emailed, and filed — and that chain has two structural weaknesses:
+Il monitoraggio ambientale viaggia ancora sulla carta. Un verbale di campionamento viene compilato a mano sulla sponda del fiume, scansionato, spedito via email e archiviato — e questa catena ha due debolezze strutturali.
 
-**1. The document can be altered after the fact.**
-A sampling report is a legal record: it certifies what a specific stretch of river looked like at a specific hour. Between the field and the archive there is no cryptographic guarantee that a pH value was not corrected, a date shifted, or a page replaced. When a report becomes evidence in a dispute over a landfill's discharge, its integrity is exactly what gets challenged — and there is no way to prove it.
+**1. Il documento è alterabile dopo la compilazione.**
+Un verbale di campionamento è un atto: certifica come si presentava un tratto di corso d'acqua in una data e a un'ora precise. Tra il campo e l'archivio non esiste alcuna garanzia crittografica che un valore di pH non sia stato corretto, una data spostata, una pagina sostituita. Quando un verbale diventa prova in un contenzioso sugli scarichi di una discarica, è esattamente la sua integrità a essere contestata — e non c'è modo di dimostrarla.
 
-**2. The data stays trapped on paper.**
-The measured parameters — water temperature, pH, dissolved oxygen — are written into boxes on a form, one digit per box. To reach the management system that should be watching them, a human has to retype them. That means delay (days between sampling and data entry), cost, and transcription errors on precisely the values that would reveal a problem. An oxygen reading of 2,1 mg/l is an environmental alarm; sitting in a PDF in a shared folder, it is nothing at all.
+**2. I dati restano prigionieri della carta.**
+I parametri misurati — temperatura dell'acqua, pH, ossigeno disciolto — vengono scritti dentro caselle prestampate, una cifra per casella. Per arrivare al gestionale che dovrebbe sorvegliarli, qualcuno deve ridigitarli a mano. Questo significa ritardo (giorni tra il prelievo e l'inserimento a sistema), costo ed errori di trascrizione proprio sui valori che rivelerebbero un problema. Un'ossigenazione di 2,1 mg/l è un allarme ambientale; ferma dentro un PDF in una cartella condivisa, non è assolutamente nulla.
 
 ---
 
-## The Solution
+## La soluzione
 
-Two independent capabilities, deliberately decoupled: one guarantees the document, the other unlocks its content.
+Due capacità indipendenti, deliberatamente disaccoppiate: una garantisce il documento, l'altra ne libera il contenuto.
 
-### 1. Zero-Data-Leakage Web3 anchoring
+### 1. Ancoraggio Web3 Zero-Data-Leakage
 
-The SHA-256 hash of the report is computed **inside the browser** using the native Web Crypto API. Only that 32-byte fingerprint is sent to the backend, which anchors it in the `data` field of an EIP-1559 transaction on Polygon (or any configured EVM network).
+L'hash SHA-256 del verbale viene calcolato **dentro il browser**, tramite la Web Crypto API nativa. Al backend viene inviata solo quell'impronta da 32 byte, che viene ancorata nel campo `data` di una transazione EIP-1559 su Polygon (o su qualunque rete EVM configurata).
 
-The document itself never leaves the operator's device. This matters beyond privacy hygiene: sampling reports carry the name of the sampler, the operator, and the site — personal and commercially sensitive data that a public body cannot casually push to a third-party cloud. Anchoring the hash produces a public, timestamped, immutable proof of existence, while the file stays where it belongs.
+Il documento non lascia mai il dispositivo dell'operatore. È un punto che va oltre l'igiene sulla privacy: i verbali riportano il nominativo del prelevatore, degli operatori e del sito — dati personali e commercialmente sensibili che un ente pubblico non può riversare con leggerezza su un cloud di terze parti. L'ancoraggio dell'hash produce una prova di esistenza pubblica, marcata temporalmente e immutabile, mentre il file resta dove deve stare.
 
-Verification is symmetric and needs no trust in us: re-hash the file, compare it with the on-chain value. If a single byte changed, the hashes diverge.
+La verifica è simmetrica e non richiede di fidarsi di noi: si ricalcola l'hash del file e lo si confronta con il valore on-chain. Se è cambiato anche un solo byte, i due hash divergono.
 
-The organisation never touches a wallet, a private key, or a token: the backend acts as a **gas-sponsored relayer**, signing and paying for the transaction. A notarization on Polygon mainnet currently costs about **$0.0008** of gas — measured live through an on-chain gas estimate combined with a CoinGecko price oracle.
+L'organizzazione non tocca mai un wallet, una chiave privata o un token: il backend agisce da **relayer gas-sponsored**, firmando e pagando la transazione. Una notarizzazione su Polygon mainnet costa oggi circa **$0,0008** di gas — misurato dal vivo combinando una stima on-chain del gas con un oracolo di prezzo CoinGecko.
 
-### 2. AI Document Intelligence — turning paper into actionable data
+### 2. AI Document Intelligence — dalla carta al dato azionabile
 
-When the operator explicitly opts in, the document is sent to **Azure AI Document Intelligence**, and a domain parser extracts the field parameters as typed values:
+Quando l'operatore presta esplicitamente il consenso, il documento viene inviato ad **Azure AI Document Intelligence** e un parser di dominio ne estrae i parametri di campo come valori tipizzati:
 
-| Field | Type | Reference range printed on the form |
+| Campo | Tipo | Riferimento stampato sul modulo |
 |---|---|---|
-| Corso d'acqua (watercourse) | `string` | — |
-| Data di prelievo (sampling date) | `date` | — |
-| Temperatura acqua (water temperature) | `decimal` °C | limit 21,5 °C (salmonids) / 28,0 °C (cyprinids) |
-| pH | `decimal` | normal 7,8 – 8,8 |
-| Ossigeno disciolto (dissolved oxygen) | `decimal` mg/l | normal 9,0 – 12,0 |
+| Corso d'acqua | `string` | — |
+| Data di prelievo | `date` | — |
+| Temperatura acqua | `decimal` °C | limite 21,5 °C (salmonicole) / 28,0 °C (ciprinicole) |
+| pH | `decimal` | valori normali 7,8 – 8,8 |
+| Ossigeno disciolto | `decimal` mg/l | valori normali 9,0 – 12,0 |
 
-Because the output is **strongly typed** — a `decimal` of 4.2, not the string `"|0| |4|, |2|"` — the receiving management system can compare it against a threshold the moment the report is uploaded. That is what makes an environmental alarm possible: pH 4,2 on an acidified watercourse, or dissolved oxygen at 2,1 mg/l against a 9,0 minimum, becomes a machine-readable signal within seconds of sampling instead of a line noticed weeks later during manual data entry.
+Poiché l'output è **fortemente tipizzato** — un `decimal` pari a 4.2, non la stringa `"|0| |4|, |2|"` — il gestionale ricevente può confrontarlo con una soglia nell'istante stesso in cui il verbale viene caricato. È questo che rende possibile l'allarme ambientale: un pH di 4,2 su un corso d'acqua acidificato, o un ossigeno disciolto a 2,1 mg/l contro un minimo di 9,0, diventa un segnale leggibile da una macchina in pochi secondi dal prelievo, invece che una riga notata settimane dopo durante l'inserimento manuale.
 
-> **Scope, stated plainly.** This branch delivers the extraction and the typed contract. Threshold evaluation and alerting are intentionally left to the receiving system (Power Platform / Dataverse), which is where escalation rules and recipients already live. The API hands over clean data ready for that step — it does not implement the alarm itself.
+> **Perimetro, detto chiaramente.** Questo branch consegna l'estrazione e il contratto dati tipizzato. La valutazione delle soglie e l'inoltro degli allarmi restano intenzionalmente al sistema ricevente (Power Platform / Dataverse), dove già vivono le regole di escalation e i destinatari. L'API consegna dati puliti pronti per quel passaggio — non implementa l'allarme.
 
-**The consent trade-off is explicit in the UI.** Anchoring is always zero-leakage; extraction is not, because OCR requires the file. So the analysis is strictly opt-in, off by default, with a checkbox stating that the document will be sent to the cloud. Decline it and the flow still works — you get the hash and the blockchain proof, and the card reports *"Analisi AI disabilitata per tutelare la privacy. Il documento non ha mai lasciato questo dispositivo."*
-
----
-
-## Parsing a real form is harder than it looks
-
-The official ARPAL template is not a clean digital form, and the parser is built against the OCR output of a genuinely compiled document rather than an idealised one:
-
-- **One box per digit.** The form prints `|_| |_|, |_|`, and OCR returns `|2| |0|, |5|` — sometimes with stray spaces inside the boxes. A normalisation pass recomposes these runs into `20,5` before any rule is applied.
-- **Unicode unit glyphs.** Azure returns `℃` (U+2103, a single character), not `°C`.
-- **Values that wrap.** `Corso d'acqua Torrente` ends a line and `Polcevera` starts the next; the value is read across the break, up to the next form label.
-- **Italian decimal comma**, parsed with invariant culture after normalisation.
-- **Near-miss traps, deliberately excluded:** `Temperatura aria` and `Temperatura sonda` sit next to `Temperatura acqua`; the `%` saturation figure sits next to the `mg/l` concentration; the footer carries a `rev00 del 10/11/2022` revision date; and three pages of filling instructions quote example values such as *"valori normali 7,8-8,8 U pH"*. Each rule is anchored so that none of these is ever mistaken for a measurement.
-- **Blank forms stay blank.** Placeholder boxes contain no digits, so an uncompiled template yields `null` on every field and `has_any_value: false` — the absence of a value is reported as such, never invented.
-
-Every extracted number is additionally range-checked (pH 0–14, temperature −5…60 °C, oxygen 0–30 mg/l): an implausible value is treated as an OCR artefact and discarded rather than surfaced.
+**Il compromesso sul consenso è esplicito nell'interfaccia.** L'ancoraggio è sempre a zero fuga di dati; l'estrazione no, perché l'OCR ha bisogno del file. Per questo l'analisi è rigorosamente opt-in, disattivata di default, con una casella che dichiara che il documento verrà inviato al cloud. Se l'operatore la rifiuta il flusso funziona comunque — ottiene l'hash e la prova on-chain — e la scheda riporta *«Analisi AI disabilitata per tutelare la privacy. Il documento non ha mai lasciato questo dispositivo.»*
 
 ---
 
-## System Architecture
+## Interpretare un modulo reale è più difficile di quanto sembri
+
+Il modello ARPAL non è un form digitale pulito, e il parser è tarato sull'output OCR di un verbale realmente compilato, non su un caso ideale:
+
+- **Una casella per cifra.** Il modulo stampa `|_| |_|, |_|` e l'OCR restituisce `|2| |0|, |5|` — a volte con spazi spuri dentro le caselle. Una fase di normalizzazione ricompone queste sequenze in `20,5` prima che venga applicata qualunque regola.
+- **Glifi Unicode per le unità.** Azure restituisce `℃` (U+2103, carattere singolo), non `°C`.
+- **Valori che vanno a capo.** `Corso d'acqua Torrente` chiude una riga e `Polcevera` apre la successiva; il valore viene letto attraverso l'interruzione, fino all'etichetta successiva del modulo.
+- **Virgola decimale italiana**, interpretata con cultura invariante dopo la normalizzazione.
+- **Trappole di prossimità, escluse deliberatamente:** `Temperatura aria` e `Temperatura sonda` stanno accanto a `Temperatura acqua`; la `%` di saturazione sta accanto alla concentrazione in `mg/l`; il piè di pagina porta una data di revisione `rev00 del 10/11/2022`; e tre pagine di istruzioni per la compilazione citano valori d'esempio come *«valori normali 7,8-8,8 U pH»*. Ogni regola è ancorata in modo che nessuno di questi venga mai scambiato per una misura.
+- **I moduli in bianco restano in bianco.** Le caselle segnaposto non contengono cifre, quindi un modello non compilato produce `null` su ogni campo e `has_any_value: false` — l'assenza di un valore viene riportata come tale, mai inventata.
+
+Ogni numero estratto è inoltre sottoposto a un controllo di plausibilità fisica (pH 0–14, temperatura −5…60 °C, ossigeno 0–30 mg/l): un valore fuori scala viene trattato come artefatto dell'OCR e scartato, anziché mostrato.
+
+---
+
+## Architettura di sistema
 
 ~~~mermaid
 graph LR
-    OP["Field Operator"] -->|"Uploads report"| BROWSER["<b>React Frontend</b><br/><i>Local SHA-256</i>"]
+    OP["Operatore in campo"] -->|"Carica il verbale"| BROWSER["<b>Frontend React</b><br/><i>SHA-256 locale</i>"]
 
-    BROWSER -.->|"Opt-in only"| API2["<b>.NET 10 Backend</b><br/><i>/api/v1/extract</i>"]
+    BROWSER -.->|"Solo con consenso"| API2["<b>Backend .NET 10</b><br/><i>/api/v1/extract</i>"]
     API2 --> AZURE["<b>Azure AI</b><br/><i>Document Intelligence</i>"]
-    API2 --> PARSER["<b>Domain Parser</b><br/><i>Field parameters</i>"]
+    API2 --> PARSER["<b>Parser di dominio</b><br/><i>Parametri di campo</i>"]
 
-    BROWSER -->|"Hash only"| API["<b>.NET 10 Backend</b><br/><i>/api/v1/notarize</i>"]
-    API -->|"Gas-sponsored EIP-1559"| CHAIN["<b>Polygon / EVM</b><br/><i>Immutable proof</i>"]
-    PARSER -.->|"Typed JSON"| ERP["<b>Management System</b><br/><i>Threshold & alerting</i>"]
+    BROWSER -->|"Solo hash"| API["<b>Backend .NET 10</b><br/><i>/api/v1/notarize</i>"]
+    API -->|"EIP-1559 gas-sponsored"| CHAIN["<b>Polygon / EVM</b><br/><i>Prova immutabile</i>"]
+    PARSER -.->|"JSON tipizzato"| ERP["<b>Gestionale</b><br/><i>Soglie e allarmi</i>"]
 
     style BROWSER fill:#20232a,stroke:#61dafb,color:#fff
     style API fill:#512bd4,stroke:#512bd4,color:#fff
@@ -94,53 +94,53 @@ graph LR
     style ERP fill:#107C10,stroke:#107C10,color:#fff
 ~~~
 
-### The Compliance Flow
+### Il flusso di compliance
 
 ~~~mermaid
 sequenceDiagram
-    participant B as React Frontend
-    participant A as .NET Backend
+    participant B as Frontend React
+    participant A as Backend .NET
     participant Z as Azure AI
-    participant R as Polygon Node
+    participant R as Nodo Polygon
 
-    B->>B: SHA-256 computed locally (document never uploaded)
-    opt Operator opts in to AI analysis
+    B->>B: Calcola SHA-256 in locale (il file non viene caricato)
+    opt L'operatore acconsente all'analisi AI
         B->>A: POST /api/v1/extract (multipart)
-        A->>Z: Analyze (prebuilt-layout + key-value pairs)
-        Z-->>A: OCR text + form field pairs
-        A->>A: Domain parser -> typed field parameters
-        A-->>B: field_data (watercourse, date, T, pH, O2)
+        A->>Z: Analisi (prebuilt-layout + coppie chiave-valore)
+        Z-->>A: Testo OCR + campi del modulo
+        A->>A: Parser di dominio -> parametri tipizzati
+        A-->>B: field_data (corso d'acqua, data, T, pH, O2)
     end
-    B->>A: POST /api/v1/notarize (hash, chain_id, anti-bot token)
-    A->>A: IP rate limit + Turnstile validation
-    A->>R: Broadcast EIP-1559 transaction (data = hash)
+    B->>A: POST /api/v1/notarize (hash, chain_id, token anti-bot)
+    A->>A: Rate limit per IP + validazione Turnstile
+    A->>R: Broadcast transazione EIP-1559 (data = hash)
     R-->>A: Transaction hash
-    A-->>B: On-chain proof + block explorer link
+    A-->>B: Prova on-chain + link al block explorer
 ~~~
 
 ---
 
-## Technology Stack
+## Stack tecnologico
 
-### Backend — C# .NET 10, Isolated Azure Functions
-Clean Architecture across `Ancorhash.Api` / `Ancorhash.Core` / `Ancorhash.Infrastructure`.
-- **AI extraction:** `Azure.AI.DocumentIntelligence` (`prebuilt-layout` with the key-value-pairs feature). Authentication is **keyless** via `DefaultAzureCredential` / Managed Identity — no API keys in configuration by default.
-- **Domain parsing:** `WaterSamplingReportParser` lives in `Core` with zero external dependencies — pure, testable business logic. It reads from two sources, the OCR text and Azure's key-value pairs, because on form documents the value often sits in a cell detached from its label.
-- **Blockchain:** `Nethereum`, EIP-1559 transactions, multi-chain by configuration (a `Dictionary<int, NetworkConfig>` keyed by EIP-155 chain id), with a per-network `IWeb3` cache.
-- **Secrets:** relayer private key resolved from **Azure Key Vault** through the configuration pipeline; nothing sensitive in source or in the repository.
-- **Security:** Cloudflare Turnstile server-side validation (fail-closed) plus IP rate limiting on the notarization endpoint, protecting the gas-sponsoring wallet from draining.
-- **Observability:** OpenTelemetry, structured logging throughout.
+### Backend — C# .NET 10, Azure Functions Isolated
+Clean Architecture su `Ancorhash.Api` / `Ancorhash.Core` / `Ancorhash.Infrastructure`.
+- **Estrazione AI:** `Azure.AI.DocumentIntelligence` (`prebuilt-layout` con la feature key-value pairs). L'autenticazione è **keyless** tramite `DefaultAzureCredential` / Managed Identity — nessuna chiave API in configurazione per impostazione predefinita.
+- **Parsing di dominio:** `WaterSamplingReportParser` vive in `Core` senza alcuna dipendenza esterna — logica di business pura e testabile. Legge da due fonti, il testo OCR e le coppie chiave-valore di Azure, perché nei documenti-modulo il valore finisce spesso in una cella staccata dalla propria etichetta.
+- **Blockchain:** `Nethereum`, transazioni EIP-1559, multi-chain per configurazione (un `Dictionary<int, NetworkConfig>` indicizzato per chain id EIP-155), con cache di un `IWeb3` per rete.
+- **Segreti:** la chiave privata del relayer è risolta da **Azure Key Vault** attraverso la pipeline di configurazione; nulla di sensibile nel codice o nel repository.
+- **Sicurezza:** validazione server-side di Cloudflare Turnstile (fail-closed) e rate limiting per IP sull'endpoint di notarizzazione, a protezione del wallet che sponsorizza il gas.
+- **Osservabilità:** OpenTelemetry, logging strutturato su tutto il percorso.
 
 ### Frontend — React, TypeScript, Vite, Tailwind CSS
-- **Local hashing:** `crypto.subtle.digest` — no third-party crypto library.
-- **Field parameters card:** typed values rendered with Italian formatting (`20,5 °C`, `7,9 U pH`, `05/08/2026`); fields that were not found are shown as *"Non rilevato"* rather than hidden — in an environmental record, a missing value is itself information.
-- **Explicit consent** for AI analysis, off by default.
+- **Hashing locale:** `crypto.subtle.digest` — nessuna libreria crittografica di terze parti.
+- **Scheda dei parametri di campo:** valori tipizzati resi con formattazione italiana (`20,5 °C`, `7,9 U pH`, `05/08/2026`); i campi non trovati vengono mostrati come *«Non rilevato»* anziché nascosti — in un atto ambientale, un dato mancante è esso stesso un'informazione.
+- **Consenso esplicito** per l'analisi AI, disattivato di default.
 
 ---
 
-## Local Development Setup
+## Avvio in locale
 
-**Prerequisites:** Node.js 20+, .NET 10 SDK, Azure Functions Core Tools (`func`).
+**Prerequisiti:** Node.js 20+, .NET 10 SDK, Azure Functions Core Tools (`func`).
 
 ### 1. Backend
 
@@ -149,7 +149,7 @@ cd src/Ancorhash.Api
 dotnet restore
 ~~~
 
-Create `local.settings.json` (git-ignored — never commit it):
+Creare `local.settings.json` (escluso da git — non va mai committato):
 
 ~~~json
 {
@@ -157,8 +157,8 @@ Create `local.settings.json` (git-ignored — never commit it):
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
     "Logging__LogLevel__Default": "Information",
-    "AI__Endpoint": "https://<your-resource>.cognitiveservices.azure.com/",
-    "Evm__RelayerPrivateKey": "0xYOUR_PRIVATE_KEY",
+    "AI__Endpoint": "https://<tua-risorsa>.cognitiveservices.azure.com/",
+    "Evm__RelayerPrivateKey": "0xLA_TUA_CHIAVE_PRIVATA",
     "Turnstile__SecretKey": "1x0000000000000000000000000000000AA",
     "Blockchain__Networks__80002__RpcUrl": "https://rpc-amoy.polygon.technology",
     "Blockchain__Networks__80002__Name": "Polygon Amoy",
@@ -172,13 +172,13 @@ Create `local.settings.json` (git-ignored — never commit it):
 }
 ~~~
 
-Azure AI uses Managed Identity: sign in with `az login` and make sure your account holds the **Cognitive Services User** role on the Document Intelligence resource.
+Azure AI usa la Managed Identity: autenticarsi con `az login` e verificare che l'utenza abbia il ruolo **Cognitive Services User** sulla risorsa Document Intelligence.
 
 ~~~bash
 func start
 ~~~
 
-> If the host reports `Unable to load Function 'Extract'. A function with the id ... already exists`, stale build output is being picked up twice. Clear it and restart — and let `func start` do the build itself:
+> Se l'host segnala `Unable to load Function 'Extract'. A function with the id ... already exists`, sta rilevando due volte l'output di build. Va azzerato prima di riavviare — e conviene lasciare che sia `func start` a compilare:
 > ~~~bash
 > rm -rf src/Ancorhash.Api/bin src/Ancorhash.Api/obj && func start
 > ~~~
@@ -190,7 +190,7 @@ cd src/Ancorhash.Web
 npm install
 ~~~
 
-Create `.env`:
+Creare il file `.env`:
 
 ~~~env
 VITE_TURNSTILE_SITEKEY="1x00000000000000000000AA"
@@ -200,21 +200,21 @@ VITE_TURNSTILE_SITEKEY="1x00000000000000000000AA"
 npm run dev   # http://localhost:5173
 ~~~
 
-Upload a sampling report, tick **"Consenti l'invio del documento al cloud per l'estrazione dei dati"**, and the extracted parameters appear alongside the cryptographic fingerprint.
+Caricare un verbale di campionamento, spuntare **«Consenti l'invio del documento al cloud per l'estrazione dei dati»**, e i parametri estratti compaiono accanto all'impronta crittografica.
 
-> The first `/extract` call after a cold start takes ~30 seconds (JIT plus Azure cold start); subsequent calls settle around 10 seconds. Warm the app up before a live demo.
+> La prima chiamata a `/extract` dopo un avvio a freddo impiega circa 30 secondi (JIT più cold start di Azure); le successive si assestano sui 10 secondi. Conviene scaldare l'applicazione prima di una demo dal vivo.
 
 ---
 
 ## API
 
-| Endpoint | Method | Purpose |
+| Endpoint | Metodo | Scopo |
 |---|---|---|
-| `/api/v1/chains` | `GET` | Configured EVM networks with live USD cost estimates |
-| `/api/v1/extract` | `POST` | `multipart/form-data` → OCR text, key-value pairs, typed `field_data` |
-| `/api/v1/notarize` | `POST` | Anchors a client-computed SHA-256 hash on the selected chain |
+| `/api/v1/chains` | `GET` | Reti EVM configurate, con stima del costo in USD in tempo reale |
+| `/api/v1/extract` | `POST` | `multipart/form-data` → testo OCR, coppie chiave-valore, `field_data` tipizzato |
+| `/api/v1/notarize` | `POST` | Ancora sulla rete scelta un hash SHA-256 calcolato dal client |
 
-Example `field_data` from a compiled report:
+Esempio di `field_data` da un verbale compilato:
 
 ~~~json
 {
@@ -230,5 +230,5 @@ Example `field_data` from a compiled report:
 ---
 
 <p align="center">
-  <b>Ancorhash</b> — Environmental records you can prove, and data you can act on.
+  <b>Ancorhash</b> — Atti ambientali dimostrabili, dati su cui agire.
 </p>
