@@ -61,3 +61,14 @@ build/
 # ── AI Agent meta-prompts (non esporre) ──────────────────────────────
 .prompts/
 prompts/
+
+# ── Segreti operativi ETHRome (MAI committare) ───────────────────────
+# key.txt contiene la chiave privata del gift code Swarm: chiunque la
+# legga controlla il postage batch. Il repo è pubblico per regolamento.
+key.txt
+*.key
+gift-code*
+
+# build artifacts
+bin/
+obj/

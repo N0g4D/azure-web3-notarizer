@@ -6,7 +6,20 @@ const API_BASE_URL =
 
 export interface NotarizeRequest {
   document_id: string
+  /** Impronta SHA-256 del documento in chiaro: l'ancora di integrità. */
   document_hash: string
+  /**
+   * Reference Swarm del documento cifrato. Va inviato l'indirizzo pubblico
+   * (64 hex) e mai la reference completa di 128 hex, che include la chiave
+   * di decifratura: vedi `toPublicAddress` in lib/swarm.ts.
+   */
+  swarm_reference: string
+  /**
+   * Durata di validità del record, in secondi. L'unità è esplicita nel nome
+   * perché la Fase 2 la traduce in una scadenza Arkiv, dove sbagliare unità
+   * significa un'entità che non scade mai (o che scade subito).
+   */
+  expiration_seconds: number
   wallet_address: string
   chain_id: number
   turnstile_token: string
@@ -18,14 +31,6 @@ export interface NotarizeResponse {
   doc_hash: string
   tx_hash: string
   chain_id: number
-}
-
-export interface ExtractResponse {
-  status: string
-  file_name: string
-  content: string
-  key_value_pairs: Record<string, string>
-  page_count: number
 }
 
 export interface Chain {
@@ -85,19 +90,4 @@ export async function getChains(): Promise<Chain[]> {
   const response = await fetch(`${API_BASE_URL}/api/v1/chains`)
   const body = await parseOrThrow<ChainsResponse>(response)
   return body.chains
-}
-
-/**
- * Estrazione OCR via Azure AI. Attenzione: a differenza della notarizzazione,
- * qui il file viene inviato al backend (l'utente lo vede in chiaro nella UI).
- */
-export async function extract(file: File): Promise<ExtractResponse> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  const response = await fetch(`${API_BASE_URL}/api/v1/extract`, {
-    method: 'POST',
-    body: formData,
-  })
-  return parseOrThrow<ExtractResponse>(response)
 }

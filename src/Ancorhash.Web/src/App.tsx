@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import type { TurnstileInstance } from '@marsidev/react-turnstile'
+import type { SwarmIdClient } from '@snaha/swarm-id'
 import { FileDropzone } from './components/FileDropzone'
 import { Spinner } from './components/Spinner'
-import { ApiError, extract, getChains, notarize } from './lib/api'
-import type { Chain, ExtractResponse, NotarizeResponse } from './lib/api'
+import { ApiError, getChains, notarize } from './lib/api'
+import type { Chain, NotarizeResponse } from './lib/api'
 import { sha256Hex } from './lib/hash'
+import {
+  SwarmError,
+  createSwarmClient,
+  toPublicAddress,
+  uploadEncrypted,
+  uploadUnavailableReason,
+} from './lib/swarm'
+import type { ConnectionInfo } from './lib/swarm'
 
 /** Sitekey pubblica Cloudflare Turnstile (dal bundle Vite). */
 const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY as
@@ -32,6 +41,18 @@ const SERVICE_FEE_USD = 1.48
 /** Durata della simulazione di pagamento (checkout mock per le demo B2B). */
 const PAYMENT_SIMULATION_MS = 2000
 
+const SECONDS_PER_DAY = 86_400
+/** Validità di default del record, in giorni. */
+const DEFAULT_VALIDITY_DAYS = '30'
+/** Tetto alla validità: oltre i 10 anni il costo dello stamp non ha senso. */
+const MAX_VALIDITY_DAYS = 3650
+/**
+ * Preset demo: una vita di 60 secondi rende la scadenza osservabile durante
+ * il judging. Con la sola unità "giorni" nessun giudice vedrebbe mai un
+ * record scadere da solo.
+ */
+const DEMO_EXPIRATION_SECONDS = 60
+
 /** Importo in USD a due decimali; sotto il centesimo mostra "<$0.01". */
 function formatUsd(amount: number): string {
   if (amount > 0 && amount < 0.01) return '<$0.01'
@@ -54,32 +75,32 @@ type ChainsState =
   | { kind: 'error'; message: string }
 
 /**
- * Esito dell'estrazione AI: opzionale, il flusso prosegue anche se fallisce.
- * 'opt-out' = l'utente non ha acconsentito all'invio del file al cloud
- * (Zero Data Leakage): il documento non lascia mai il dispositivo.
+ * Stato del documento. `swarmReference` è la reference cifrata completa
+ * (128 hex, chiave inclusa) e resta confinata al browser: verso il backend
+ * viaggia solo il suo indirizzo pubblico.
  */
-type Extraction =
-  | { status: 'ok'; data: ExtractResponse }
-  | { status: 'failed'; message: string }
-  | { status: 'opt-out' }
-
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'analyzing'; fileName: string }
-  | { kind: 'preview'; fileName: string; hash: string; extraction: Extraction }
-  | { kind: 'submitting'; fileName: string; hash: string; extraction: Extraction }
+  | { kind: 'analyzing'; fileName: string; progress: number }
+  | { kind: 'preview'; fileName: string; hash: string; swarmReference: string }
+  | {
+      kind: 'submitting'
+      fileName: string
+      hash: string
+      swarmReference: string
+    }
   | {
       kind: 'success'
       fileName: string
       hash: string
-      extraction: Extraction
+      swarmReference: string
       result: NotarizeResponse
     }
   | {
       kind: 'error'
       fileName: string
       hash: string
-      extraction: Extraction | null
+      swarmReference: string
       message: string
     }
 
@@ -105,12 +126,79 @@ function AnchorIcon({ className = 'h-5 w-5' }: { className?: string }) {
 
 function App() {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
-  // Opt-in esplicito: senza consenso il file non viene MAI inviato al cloud.
-  const [isAiEnabled, setIsAiEnabled] = useState(false)
   const [chainsState, setChainsState] = useState<ChainsState>({
     kind: 'loading',
   })
   const [selectedChainId, setSelectedChainId] = useState<number | null>(null)
+
+  // --- Swarm ID -----------------------------------------------------------
+  const [swarmClient, setSwarmClient] = useState<SwarmIdClient | null>(null)
+  const [swarmInfo, setSwarmInfo] = useState<ConnectionInfo | null>(null)
+  const [swarmInitError, setSwarmInitError] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
+
+  // Il client monta un iframe nascosto e non è riutilizzabile dopo destroy():
+  // va quindi creato dentro l'effect, così lo StrictMode ne ricrea uno nuovo.
+  useEffect(() => {
+    let isActive = true
+    const client = createSwarmClient((info) => {
+      if (isActive) setSwarmInfo(info)
+    })
+
+    client
+      .initialize()
+      .then(() => {
+        if (isActive) setSwarmClient(client)
+      })
+      .catch((error: unknown) => {
+        if (!isActive) return
+        setSwarmInitError(
+          error instanceof Error
+            ? `Swarm ID non raggiungibile: ${error.message}`
+            : 'Swarm ID non raggiungibile.',
+        )
+      })
+
+    return () => {
+      isActive = false
+      client.destroy()
+    }
+  }, [])
+
+  const handleSwarmConnect = useCallback(async () => {
+    if (!swarmClient || isConnecting) return
+    setIsConnecting(true)
+    try {
+      await swarmClient.connect()
+    } catch (error) {
+      setSwarmInitError(
+        error instanceof Error
+          ? `Connessione a Swarm ID annullata: ${error.message}`
+          : 'Connessione a Swarm ID annullata.',
+      )
+    } finally {
+      setIsConnecting(false)
+    }
+  }, [isConnecting, swarmClient])
+
+  // Un'identità connessa non basta: senza postage stamp canUpload resta false.
+  const swarmBlocker = swarmInfo
+    ? uploadUnavailableReason(swarmInfo)
+    : 'Inizializzazione di Swarm ID…'
+  const canUploadToSwarm = swarmBlocker === null
+
+  // --- Validità del record ------------------------------------------------
+  const [validityDays, setValidityDays] = useState(DEFAULT_VALIDITY_DAYS)
+  const [isDemoExpiry, setIsDemoExpiry] = useState(false)
+
+  const parsedDays = Number.parseInt(validityDays, 10)
+  const isValidityValid =
+    Number.isInteger(parsedDays) &&
+    parsedDays >= 1 &&
+    parsedDays <= MAX_VALIDITY_DAYS
+  const expirationSeconds = isDemoExpiry
+    ? DEMO_EXPIRATION_SECONDS
+    : parsedDays * SECONDS_PER_DAY
 
   const loadChains = useCallback(async () => {
     setChainsState({ kind: 'loading' })
@@ -163,78 +251,121 @@ function App() {
     selectedChain && !selectedChain.is_free ? selectedChain.estimated_cost_usd : 0
   const totalUsd = gasCostUsd + SERVICE_FEE_USD
 
-  const handleFileSelected = useCallback(
+  // Ultimo file scelto: consente di riprovare l'upload dopo un errore Swarm
+  // (tipicamente un gift code riscattato dopo il primo tentativo).
+  const pendingFileRef = useRef<File | null>(null)
+
+  const processFile = useCallback(
     async (file: File) => {
-      setPhase({ kind: 'analyzing', fileName: file.name })
+      pendingFileRef.current = file
 
-      // Hash locale e OCR remoto partono insieme e non si bloccano a vicenda.
-      // Senza consenso, l'estrazione si risolve subito in 'opt-out' e nessun
-      // byte del documento lascia il dispositivo (Zero Data Leakage).
-      // Con consenso, è "best effort": un suo fallimento non ferma il flusso.
-      const extractionPromise: Promise<Extraction> = isAiEnabled
-        ? extract(file)
-            .then((data): Extraction => ({ status: 'ok', data }))
-            .catch(
-              (error): Extraction => ({
-                status: 'failed',
-                message:
-                  error instanceof ApiError
-                    ? error.message
-                    : 'Servizio AI non raggiungibile.',
-              }),
-            )
-        : Promise.resolve({ status: 'opt-out' })
-
-      try {
-        const [hash, extraction] = await Promise.all([
-          sha256Hex(file),
-          extractionPromise,
-        ])
-        setPhase({ kind: 'preview', fileName: file.name, hash, extraction })
-      } catch {
-        // L'hash è l'unico requisito irrinunciabile per notarizzare.
+      if (!swarmClient) {
         setPhase({
           kind: 'error',
           fileName: file.name,
           hash: '',
-          extraction: null,
+          swarmReference: '',
+          message: swarmInitError ?? 'Swarm ID non è ancora pronto.',
+        })
+        return
+      }
+
+      setPhase({ kind: 'analyzing', fileName: file.name, progress: 0 })
+
+      // L'hash è istantaneo e non dipende dalla rete: calcolarlo per primo
+      // separa nettamente "file illeggibile" da "Swarm non disponibile".
+      let hash: string
+      try {
+        hash = await sha256Hex(file)
+      } catch {
+        setPhase({
+          kind: 'error',
+          fileName: file.name,
+          hash: '',
+          swarmReference: '',
           message: 'Impossibile leggere il file selezionato.',
+        })
+        return
+      }
+
+      try {
+        const swarmReference = await uploadEncrypted(
+          swarmClient,
+          file,
+          (progress) =>
+            setPhase((current) =>
+              current.kind === 'analyzing' ? { ...current, progress } : current,
+            ),
+        )
+        setPhase({
+          kind: 'preview',
+          fileName: file.name,
+          hash,
+          swarmReference,
+        })
+      } catch (error) {
+        setPhase({
+          kind: 'error',
+          fileName: file.name,
+          hash,
+          swarmReference: '',
+          message:
+            error instanceof SwarmError
+              ? error.message
+              : 'Upload su Swarm fallito.',
         })
       }
     },
-    [isAiEnabled],
+    [swarmClient, swarmInitError],
   )
+
+  const retryUpload = useCallback(() => {
+    const file = pendingFileRef.current
+    if (file) void processFile(file)
+  }, [processFile])
 
   const handleNotarize = useCallback(async () => {
     if (phase.kind !== 'preview' && phase.kind !== 'error') return
-    const { fileName, hash, extraction } = phase
-    if (!hash || extraction === null || selectedChainId === null) return
+    const { fileName, hash, swarmReference } = phase
+    // Invariante del vault: nessuna ancora on-chain senza il blob cifrato.
+    if (!hash || !swarmReference || selectedChainId === null) return
+    if (!isDemoExpiry && !isValidityValid) return
     // Con Turnstile configurato il token è obbligatorio; senza sitekey
     // (solo dev) si prosegue e sarà il backend a respingere con 403.
     if (TURNSTILE_SITEKEY !== undefined && turnstileToken === null) return
 
-    setPhase({ kind: 'submitting', fileName, hash, extraction })
+    setPhase({ kind: 'submitting', fileName, hash, swarmReference })
     try {
       const result = await notarize({
         document_id: fileName,
         document_hash: hash,
+        // Solo l'indirizzo: la chiave di decifratura non lascia il browser.
+        swarm_reference: toPublicAddress(swarmReference),
+        expiration_seconds: expirationSeconds,
         wallet_address: MOCK_WALLET_ADDRESS,
         chain_id: selectedChainId,
         turnstile_token: turnstileToken ?? '',
       })
-      setPhase({ kind: 'success', fileName, hash, extraction, result })
+      setPhase({ kind: 'success', fileName, hash, swarmReference, result })
     } catch (error) {
       const message =
         error instanceof ApiError
           ? error.message
           : 'Backend non raggiungibile. Verifica che le Azure Functions siano in esecuzione su localhost:7071.'
-      setPhase({ kind: 'error', fileName, hash, extraction, message })
+      setPhase({ kind: 'error', fileName, hash, swarmReference, message })
     } finally {
       // Il token è monouso: forziamo un nuovo challenge per il prossimo tentativo.
       setTurnstileToken(null)
       turnstileRef.current?.reset()
     }
-  }, [phase, selectedChainId, turnstileToken])
+  }, [
+    expirationSeconds,
+    isDemoExpiry,
+    isValidityValid,
+    phase,
+    selectedChainId,
+    turnstileToken,
+  ])
 
   /**
    * Checkout mock: mostra una fase di "pagamento in corso" per qualche secondo,
@@ -263,6 +394,7 @@ function App() {
 
   const reset = useCallback(() => {
     cancelPendingPayment()
+    pendingFileRef.current = null
     setPhase({ kind: 'idle' })
     setTurnstileToken(null)
   }, [cancelPendingPayment])
@@ -273,6 +405,12 @@ function App() {
     phase.kind === 'submitting' ||
     phase.kind === 'success' ||
     (phase.kind === 'error' && phase.hash !== '')
+  // Il checkout compare solo quando il documento è davvero su Swarm.
+  const showCheckout =
+    (phase.kind === 'preview' ||
+      phase.kind === 'submitting' ||
+      phase.kind === 'error') &&
+    phase.swarmReference !== ''
 
   return (
     <div className="min-h-screen bg-white font-sans text-neutral-900 antialiased">
@@ -288,14 +426,73 @@ function App() {
           Notarizza un documento
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-          L'impronta SHA-256 è calcolata localmente nel browser e ancorata su
-          Ethereum Sepolia. L'analisi AI estrae i dati del documento. Il file
-          non viene mai caricato per la notarizzazione.
+          Il documento è cifrato nel browser e archiviato su Swarm; la sua
+          impronta SHA-256, calcolata localmente, viene ancorata on-chain. Il
+          file in chiaro non lascia mai questo dispositivo.
         </p>
 
         <div className="mt-8">
           {phase.kind === 'idle' && (
             <>
+              {/* Archiviazione cifrata: prerequisito della notarizzazione */}
+              <div className="mb-5 rounded-lg border border-neutral-200 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold">
+                    Archiviazione cifrata (Swarm)
+                  </h3>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
+                      canUploadToSwarm
+                        ? 'border-neutral-900 text-neutral-900'
+                        : 'border-neutral-200 text-neutral-500'
+                    }`}
+                  >
+                    {canUploadToSwarm ? 'Pronto' : 'Non disponibile'}
+                  </span>
+                </div>
+
+                {swarmInfo?.identity ? (
+                  <p className="mt-3 text-xs text-neutral-500">
+                    Connesso come{' '}
+                    <span className="font-medium text-neutral-900">
+                      {swarmInfo.identity.name}
+                    </span>
+                    <span className="ml-2 break-all font-mono">
+                      {swarmInfo.identity.address}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-3 text-xs text-neutral-500">
+                    Accedi con una passkey o un account Ethereum. Nessun nodo
+                    Bee da installare.
+                  </p>
+                )}
+
+                {swarmBlocker !== null && (
+                  <p className="mt-2 text-xs text-neutral-400">
+                    {swarmInitError ?? swarmBlocker}
+                  </p>
+                )}
+
+                {!swarmInfo?.identity && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSwarmConnect()}
+                    disabled={swarmClient === null || isConnecting}
+                    className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg border border-neutral-900 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isConnecting ? (
+                      <>
+                        <Spinner className="h-3.5 w-3.5" />
+                        Connessione…
+                      </>
+                    ) : (
+                      'Connetti Swarm ID'
+                    )}
+                  </button>
+                )}
+              </div>
+
               <div className="mb-5">
                 <label
                   htmlFor="chain-select"
@@ -356,19 +553,16 @@ function App() {
                 )}
               </div>
 
-              <FileDropzone onFileSelected={handleFileSelected} />
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-neutral-600">
-                <input
-                  type="checkbox"
-                  checked={isAiEnabled}
-                  onChange={(e) => setIsAiEnabled(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-300 accent-black"
-                />
-                <span>
-                  Consenti l'invio del documento al cloud per l'estrazione dei
-                  dati (Azure AI)
-                </span>
-              </label>
+              <FileDropzone
+                onFileSelected={(file) => void processFile(file)}
+                disabled={!canUploadToSwarm}
+              />
+              {!canUploadToSwarm && (
+                <p className="mt-3 text-xs text-neutral-400">
+                  Connetti Swarm ID per caricare un documento: senza
+                  archiviazione cifrata non c'è nulla da notarizzare.
+                </p>
+              )}
             </>
           )}
 
@@ -376,13 +570,12 @@ function App() {
             <div className="flex items-center gap-3 rounded-lg border border-neutral-200 px-5 py-6 text-sm text-neutral-600">
               <Spinner className="h-4 w-4" />
               <span>
-                Analisi di{' '}
+                Cifratura e upload di{' '}
                 <span className="font-medium text-neutral-900">
                   {phase.fileName}
-                </span>
-                {isAiEnabled
-                  ? ': hash locale e estrazione AI in parallelo…'
-                  : ': calcolo dell’hash nel browser…'}
+                </span>{' '}
+                su Swarm
+                {phase.progress > 0 ? ` — ${phase.progress}%` : '…'}
               </span>
             </div>
           )}
@@ -420,64 +613,120 @@ function App() {
                 </p>
               </section>
 
-              {/* Blocco 2: dati estratti dall'AI (best effort) */}
+              {/* Blocco 2: blob cifrato su Swarm */}
               <section className="rounded-lg border border-neutral-200 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold">
-                    Dati Estratti (Azure AI)
+                    Documento Cifrato (Swarm)
                   </h3>
-                  {phase.extraction?.status === 'ok' && (
+                  {phase.swarmReference !== '' && (
                     <span className="shrink-0 rounded-full border border-neutral-200 px-2.5 py-0.5 text-[11px] font-medium text-neutral-500">
-                      {phase.extraction.data.page_count}{' '}
-                      {phase.extraction.data.page_count === 1
-                        ? 'pagina'
-                        : 'pagine'}
+                      Cifrato nel browser
                     </span>
                   )}
                 </div>
 
-                {phase.extraction?.status === 'ok' ? (
-                  <div className="mt-3 space-y-3">
-                    {Object.keys(phase.extraction.data.key_value_pairs).length >
-                      0 && (
-                      <dl className="space-y-1 text-xs">
-                        {Object.entries(
-                          phase.extraction.data.key_value_pairs,
-                        ).map(([key, value]) => (
-                          <div key={key} className="flex gap-2">
-                            <dt className="shrink-0 font-medium text-neutral-500">
-                              {key}
-                            </dt>
-                            <dd className="text-neutral-900">{value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                    <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-neutral-200 bg-neutral-50 p-4 font-mono text-xs leading-relaxed text-neutral-700">
-                      {phase.extraction.data.content || '(nessun testo estratto)'}
-                    </pre>
-                  </div>
-                ) : phase.extraction?.status === 'opt-out' ? (
-                  <p className="mt-3 text-xs text-neutral-400">
-                    Analisi AI disabilitata per tutelare la privacy (Zero Data
-                    Leakage). Il documento non ha mai lasciato questo
-                    dispositivo.
-                  </p>
+                {phase.swarmReference !== '' ? (
+                  <>
+                    <dl className="mt-3 space-y-2 text-xs">
+                      <div>
+                        <dt className="font-medium text-neutral-500">
+                          Indirizzo pubblico (inviato al backend)
+                        </dt>
+                        <dd className="mt-0.5 break-all font-mono text-neutral-700">
+                          {toPublicAddress(phase.swarmReference)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="font-medium text-neutral-500">
+                          Reference completa — include la chiave di decifratura
+                        </dt>
+                        <dd className="mt-0.5 break-all font-mono text-neutral-700">
+                          {phase.swarmReference}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
+                      Conserva la reference completa: è l'unico modo per
+                      rileggere il documento. Non viene inviata a nessun
+                      server.
+                    </p>
+                  </>
                 ) : (
-                  <p className="mt-3 text-xs text-neutral-400">
-                    {phase.extraction?.status === 'failed'
-                      ? `Estrazione non disponibile: ${phase.extraction.message} Puoi comunque procedere con la notarizzazione dell'hash.`
-                      : 'Estrazione non eseguita.'}
-                  </p>
+                  <div className="mt-3">
+                    <p className="text-xs text-neutral-400">
+                      Il documento non è su Swarm: la notarizzazione resta
+                      bloccata finché l'upload non riesce.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={retryUpload}
+                      disabled={isBusy || !canUploadToSwarm}
+                      className="mt-3 inline-flex items-center rounded-lg border border-neutral-900 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Riprova upload
+                    </button>
+                  </div>
                 )}
               </section>
+
+              {/* Blocco 3: validità del record */}
+              {phase.kind !== 'success' && phase.swarmReference !== '' && (
+                <section className="rounded-lg border border-neutral-200 p-5">
+                  <h3 className="text-sm font-semibold">Validità del record</h3>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <label
+                      htmlFor="validity-days"
+                      className="text-sm text-neutral-600"
+                    >
+                      Giorni di validità
+                    </label>
+                    <input
+                      id="validity-days"
+                      type="number"
+                      min={1}
+                      max={MAX_VALIDITY_DAYS}
+                      value={validityDays}
+                      disabled={isDemoExpiry || isBusy}
+                      onChange={(e) => setValidityDays(e.target.value)}
+                      className="w-24 rounded-lg border border-neutral-200 px-3 py-1.5 font-mono text-sm text-neutral-900 transition-colors hover:border-neutral-400 focus:border-neutral-900 focus:outline-none disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400"
+                    />
+                  </div>
+
+                  {!isDemoExpiry && !isValidityValid && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Inserisci un numero intero di giorni tra 1 e{' '}
+                      {MAX_VALIDITY_DAYS}.
+                    </p>
+                  )}
+
+                  <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-sm text-neutral-600">
+                    <input
+                      type="checkbox"
+                      checked={isDemoExpiry}
+                      disabled={isBusy}
+                      onChange={(e) => setIsDemoExpiry(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-300 accent-black"
+                    />
+                    <span>
+                      Demo ETHRome — scade tra {DEMO_EXPIRATION_SECONDS} secondi
+                    </span>
+                  </label>
+
+                  <p className="mt-3 text-[11px] text-neutral-400">
+                    Inviato al backend come{' '}
+                    <span className="font-mono">
+                      expiration_seconds = {expirationSeconds || 0}
+                    </span>
+                  </p>
+                </section>
+              )}
             </div>
           )}
         </div>
 
-        {(phase.kind === 'preview' ||
-          phase.kind === 'submitting' ||
-          (phase.kind === 'error' && phase.hash !== '')) && (
+        {showCheckout && (
           <div className="mt-6 rounded-lg border border-neutral-200 bg-neutral-50 p-5">
             <div className="flex items-baseline justify-between">
               <h3 className="text-sm font-semibold">Checkout</h3>
@@ -550,6 +799,7 @@ function App() {
                 isBusy ||
                 isProcessingPayment ||
                 selectedChainId === null ||
+                (!isDemoExpiry && !isValidityValid) ||
                 (TURNSTILE_SITEKEY !== undefined && turnstileToken === null)
               }
               className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -637,7 +887,7 @@ function App() {
           {selectedChain
             ? `${selectedChain.name} (chain_id ${selectedChain.chain_id})`
             : 'nessuna rete selezionata'}{' '}
-          · relayer gas-sponsored
+          · Swarm + relayer gas-sponsored
         </footer>
       </main>
     </div>

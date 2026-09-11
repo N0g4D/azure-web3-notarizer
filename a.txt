@@ -1,0 +1,633 @@
+a================================================================================
+ANCORHASH · ETHROME 2026 · REPORT FASE 1 (Frontend & Swarm)
+Data: 2026-09-11  ·  Branch: ethrome-2026
+================================================================================
+
+STATO: COMPLETATA. tsc, oxlint e vite build passano; dev server verificato.
+
+
+--------------------------------------------------------------------------------
+1. DOCUMENTI LETTI
+--------------------------------------------------------------------------------
+
+- docs/ETHROME_ARCHITECTURE.md (piano di build, 3 fasi)
+- hacker-manual/ (submodule urbeETH/ethrome-2026-hacker-manual)
+  Letti integralmente: CLAUDE.md, llms.txt, manual/prizes.md, manual/rules.md
+
+Bounty target confermati dal manuale:
+  Swarm      $1.000  · due vincitori da $500, nessuna categoria fissa
+  Arkiv      $2.500  · Mission 02 "Built to expire" $500 + $1.000 Best Use
+  Team1      $1.000  · Track B "Tokenized Assets" $300 (1°) / $100 (2°)
+
+
+--------------------------------------------------------------------------------
+2. ANALISI DEI FILE (pre-modifica)
+--------------------------------------------------------------------------------
+
+lib/hash.ts   12 righe. Solo sha256Hex(file) via window.crypto.subtle.
+              Zero dipendenze, zero stato. Nessun contatto con la rete.
+
+lib/api.ts    Client REST tipizzato. NotarizeRequest a 5 campi. Presenti
+              extract() + ExtractResponse (Azure AI, invio file al backend).
+              parseOrThrow<T> centralizza la gestione errori → ApiError.
+
+App.tsx       648 righe, macchina a stati `Phase` a 6 varianti. Hash locale e
+              OCR remoto lanciati in parallelo con Promise.all. Checkout
+              simulato con timer, Turnstile monouso con reset nel finally.
+
+
+--------------------------------------------------------------------------------
+3. TRE DIVERGENZE DAL PIANO, RILEVATE E RISOLTE
+--------------------------------------------------------------------------------
+
+[A] "Sostituire SHA-256 con Swarm" avrebbe rotto la notarizzazione.
+
+    src/Ancorhash.Core/Services/NotarizationService.cs:27-32 impone una regex
+    stretta: document_hash deve essere SHA-256 hex di 64 caratteri. Una
+    reference Swarm con encrypt:true è di 128 caratteri (32 byte indirizzo +
+    32 byte chiave). Ogni notarizzazione avrebbe risposto 400.
+
+    In più il brief Arkiv prescrive esattamente l'opposto (manual/prizes.md:42):
+      "leave the file where it is and put an Arkiv entity beside it,
+       a hash, a URL or a CID"
+
+    DECISIONE: SHA-256 mantenuto come ancora di integrità; Swarm aggiunto
+    come campo parallelo. Nessuna modifica al backend in Fase 1.
+
+[B] Swarm ID non è una funzione pura: è un client con stato di connessione.
+
+    API reale verificata sui typings v0.4.0 (non sulla documentazione):
+      new SwarmIdClient({iframeOrigin, metadata, onConnectionChange})
+      await client.initialize()      // monta un iframe nascosto
+      await client.connect()         // passkey o account Ethereum
+      await client.uploadData(bytes, {encrypt:true}) -> {reference}
+      client.destroy()               // il client NON è riutilizzabile dopo
+
+    Punto critico: ConnectionInfo.canUpload resta FALSE anche con identità
+    connessa, se l'utente non ha postage stamp e non è configurato un gateway
+    sovvenzionato. È lo stato più frequente prima di riscattare un gift code.
+
+    DECISIONE: lo stato di connessione vive in App.tsx, non in hash.ts.
+
+[C] expiration_days non permette di dimostrare Arkiv Mission 02.
+
+    manual/prizes.md:68 — "Keep lifetimes at seconds or a couple of minutes,
+    because nobody can wait on Sunday morning."
+
+    Con la sola unità "giorni" nessun giudice vedrebbe mai un record scadere.
+
+    DECISIONE: il campo inviato è expiration_seconds (unità esplicita nel
+    nome), con input in giorni per il prodotto reale + preset demo da 60s.
+
+
+--------------------------------------------------------------------------------
+4. DECISIONI CONFERMATE DALL'UTENTE
+--------------------------------------------------------------------------------
+
+1. hash.ts      → mantenere SHA-256, aggiungere Swarm a fianco
+2. Azure AI     → rimozione totale (anche extract() e ExtractResponse)
+3. Scadenza     → giorni + preset demo, inviati come expiration_seconds
+4. Install      → autorizzato
+5. Fallback     → BLOCCANTE: niente reference Swarm, niente notarizzazione
+
+
+--------------------------------------------------------------------------------
+5. MODIFICHE APPLICATE
+--------------------------------------------------------------------------------
+
+NUOVO  src/Ancorhash.Web/src/lib/swarm.ts                          (+118)
+
+  createSwarmClient(onConnectionChange)  factory del client
+  uploadEncrypted(client, file, onProgress?) -> reference 128 hex
+  uploadUnavailableReason(info) -> string|null   messaggi UI in italiano,
+                                   distingue no-stamp da stamper-failed
+  toPublicAddress(reference) -> primi 64 hex, chiave esclusa
+  SwarmError                             errore di dominio
+
+  Legge VITE_SWARM_ID_ORIGIN (default https://swarm-id.snaha.net) e
+  l'opzionale VITE_SWARM_GATEWAY_URL.
+
+MOD    src/Ancorhash.Web/src/lib/api.ts                            (+22/-36)
+
+  NotarizeRequest += swarm_reference: string
+                  += expiration_seconds: number
+  RIMOSSI extract() e ExtractResponse.
+
+MOD    src/Ancorhash.Web/src/App.tsx                          (+~370/-~110)
+
+  + ciclo di vita Swarm ID in useEffect (client creato DENTRO l'effect:
+    destroy() lo rende inutilizzabile e StrictMode rimonta due volte)
+  + pannello "Archiviazione cifrata (Swarm)" con stato e connect
+  + dropzone disabilitata finché canUpload è false
+  + sezione "Validità del record": input giorni (1..3650) + checkbox demo
+  + blocco "Documento Cifrato (Swarm)" con indirizzo pubblico E reference
+    completa, con avviso che la reference è l'unico modo per rileggere
+  + pendingFileRef + "Riprova upload" (il gift code si riscatta spesso
+    DOPO il primo tentativo fallito)
+  + progress % durante l'upload
+  - rimossi isAiEnabled, tipo Extraction, blocco UI "Dati Estratti"
+  ~ Phase: `extraction` sostituito da `swarmReference`
+  ~ hash calcolato PRIMA dell'upload, non in parallelo: separa nettamente
+    "file illeggibile" da "Swarm non disponibile"
+
+MOD    src/Ancorhash.Web/.env
+
+  + VITE_SWARM_ID_ORIGIN, + VITE_SWARM_GATEWAY_URL (commentato)
+  NOTA: .env è in .gitignore (.gitignore:34). Non serve distribuirlo: il
+  default è nel codice e l'app funziona senza.
+
+MOD    package.json / package-lock.json     @snaha/swarm-id ^0.4.0, +35 pkg
+
+
+--------------------------------------------------------------------------------
+6. INVARIANTE DI SICUREZZA INTRODOTTA
+--------------------------------------------------------------------------------
+
+Con encrypt:true la reference Swarm È il segreto: 128 hex = indirizzo +
+chiave di decifratura. Pubblicarla su un registro pubblico (Arkiv, on-chain)
+equivarrebbe a pubblicare il documento in chiaro.
+
+  reference completa (128 hex)  → resta SOLO nel browser, mostrata all'utente
+  toPublicAddress() (64 hex)    → unica parte inviata al backend
+
+Il flusso di notarizzazione invia toPublicAddress(swarmReference).
+Questo va rispettato anche in Fase 2 (Arkiv) e Fase 3 (Avalanche).
+
+
+--------------------------------------------------------------------------------
+7. VERIFICA ESEGUITA
+--------------------------------------------------------------------------------
+
+  npx tsc -b --force            exit 0, nessun errore
+  npx oxlint                    nessun finding
+  npm run build                 build in 147ms, OK
+  vite dev su :5199             index 200, App.tsx 200, swarm.ts 200
+                                VITE_SWARM_ID_ORIGIN correttamente iniettata
+  pre-bundle @snaha/swarm-id    200, ZERO import "node:" non risolti
+                                (era il rischio principale: bee-js in browser)
+
+NON verificato — richiede intervento umano e non è automatizzabile qui:
+  - login con passkey su Swarm ID
+  - upload reale su Swarm (serve un gift code, banco Swarm venerdì sera)
+  - notarizzazione end-to-end (serve il backend su localhost:7071)
+
+
+--------------------------------------------------------------------------------
+8. PUNTI APERTI
+--------------------------------------------------------------------------------
+
+BUNDLE  dist/assets/index.js è 526,82 kB (164,30 kB gzip) e supera la soglia
+        di warning di Vite; la crescita è attribuibile a bee-js dentro
+        swarm-id. Non è un errore. Se serve, code-splitting in Fase 2.
+
+AUDIT   4 vulnerabilità transitive: axios (SSRF, high) via @ethersphere/bee-js,
+        nanoid (high) dall'albero Vite. Non raggiungibili dal path di upload
+        su testnet. Sconsigliato forzare un downgrade di bee-js a metà
+        hackathon.
+
+BACKEND /api/v1/extract esiste ancora lato C#: ora non ha più chiamanti.
+        Fuori dallo scope della Fase 1 (frontend); da decidere se rimuoverlo.
+
+MEMORIA project_vision.md indica Azure come parte della visione strategica.
+        La rimozione riguarda SOLO la UI di estrazione: Azure Functions
+        resta il backend di tutta l'applicazione.
+
+
+--------------------------------------------------------------------------------
+9. AVVERTENZE DAL MANUALE — NON NEL PIANO DI BUILD
+--------------------------------------------------------------------------------
+
+[SUPERATO — vedi A1] La conversazione obbligatoria del sabato entro le
+   20:00 (manual/prizes.md:86) NON è più un requisito. Confermato dal
+   documento guides/ethrome-current del MCP Arkiv (maintained-2026-09-10),
+   che elenca esplicitamente la "compulsory Saturday conversation" fra le
+   regole da NON ripristinare. Resta utile parlare con il team Arkiv, ma
+   non è una scadenza di qualificazione.
+
+[AGGIORNATO — vedi A1] Due file nel repo:
+   - arkiv/schema.md    NON è più un requisito di qualificazione: è
+                        "useful project documentation... an optional
+                        evidence index". Lo scriviamo comunque, come lavoro
+                        di design e come indice delle evidenze.
+   - arkiv/friction.md  bug report. NON vale un quinto: con la rubrica
+                        attuale "Arkiv feedback" vale il 25%, cioè un
+                        QUARTO. Scritto, 6 voci verificate.
+
+!! PROGETTO PRE-ESISTENTE (manual/rules.md:50-52). Tre condizioni, tutte
+   obbligatorie, pena esclusione da premio E bounty:
+   1. dichiararlo esplicitamente nella submission
+   2. solo la parte nuova viene valutata
+   3. repo esistente reso pubblico, storia visibile, niente repo nuovo
+   Stato: OK, si sta lavorando su ethrome-2026 nel repo esistente.
+   DA FARE: rendere il repository pubblico.
+
+!! Team1: UN SOLO track per progetto (manual/prizes.md:246). Track B richiede
+   "an asset rule, an eligibility or transfer policy, and settlement or
+   payment logic". Il solo mint previsto in Fase 3 non basta a qualificare.
+
+!! Team1 richiede una SECONDA submission sul loro form, oltre alla spunta
+   sul form ETHRome (manual/prizes.md:256).
+
+!! Swarm: gift code al banco venerdì sera. Senza, canUpload resta false e —
+   data la scelta di bloccare — l'intera demo non parte.
+
+!! Deadline submission: DOMENICA 13 SETTEMBRE 10:00, nessuna proroga.
+   Serve anche un video demo di massimo 3 minuti.
+
+
+--------------------------------------------------------------------------------
+10. PROSSIMO PASSO
+--------------------------------------------------------------------------------
+
+Fase 2 (Backend & Arkiv). Il contratto frontend è pronto e stabile:
+il backend riceve già swarm_reference e expiration_seconds — System.Text.Json
+ignora le proprietà sconosciute, quindi nulla si rompe finché il DTO C# non
+viene esteso.
+
+Da fare in Fase 2:
+  1. NotarizeHttpRequest.cs  += SwarmReference, ExpirationSeconds
+  2. entità Arkiv con scadenza = expiration_seconds (Mission 02)
+  3. attributi tipizzati pensati per FILTRI COMPOSTI, non lookup per id:
+     query depth vale 30 punti su 100 nel punteggio Arkiv
+  4. il payload NON è interrogabile: la scelta attributi/payload va motivata
+     nella submission, vale altri 20 punti
+
+================================================================================
+
+
+================================================================================
+APPENDICE · SESSIONE 2 — GIFT CODE SWARM, MCP ARKIV, FRICTION REPORT
+Data: 2026-09-11
+================================================================================
+
+--------------------------------------------------------------------------------
+A1. CORREZIONE IMPORTANTE AL PUNTO 9 DI QUESTO REPORT
+--------------------------------------------------------------------------------
+
+Nella sezione 9 avevo indicato come scadenza dura la "conversazione di 10 minuti
+con il team Arkiv entro sabato 20:00". NON È PIÙ VERO.
+
+Fonte autorevole: MCP ufficiale Arkiv ETHRome, documento guides/ethrome-current
+(maintained-2026-09-10), che dice testualmente:
+
+  "Do not restore the older five requirements, compulsory Saturday
+   conversation, three-feedback-bullet minimum, old deadlines or the
+   previous five-part ranking."
+
+Conseguenze concrete:
+
+  1. La conversazione obbligatoria del sabato NON esiste più.
+  2. Il punteggio a 5 voci del manuale (Query depth 30 / Evidence 20 /
+     Fit 20 / Friction 20 / Craft 10) È SUPERATO.
+  3. arkiv/schema.md NON è più un requisito di qualificazione: è
+     "useful project documentation... an optional evidence index,
+     not the sole entry route".
+
+RUBRICA ATTUALE (dal Hub Arkiv e da guides/ethrome-current):
+
+  30%  Why Arkiv / Web3 database?
+  25%  Technical execution
+  20%  Usefulness and adoption potential
+  25%  Arkiv feedback     <-- il file friction/feedback SALE da 1/5 a 1/4
+
+In sintesi: il manuale cartaceo ETHRome (synced 2026-09-10) è più vecchio delle
+fonti live di Arkiv. Questo è esso stesso materiale da friction report (F-07).
+
+
+--------------------------------------------------------------------------------
+A2. GIFT CODE SWARM — DECODIFICATO E VERIFICATO ON-CHAIN
+--------------------------------------------------------------------------------
+
+QR decodificato con il framework Vision di macOS (swift, nessuna installazione).
+Payload: {"v":1,"pk":"0x…","batch":"0x…"}
+
+VERIFICA DI PROPRIETÀ:
+  indirizzo derivato dalla chiave privata : 0x023d0149…0bb89c
+  owner del batch on-chain                : 0x023d0149…0bb89c
+  -> COINCIDONO: la chiave può firmare i postage stamp di quel batch.
+
+STATO DEL BATCH (contratto 0x45a1502382541cd610cc9068e88727426b696293, Gnosis):
+  depth 23 / bucketDepth 16   -> 32 GiB teorici, mutable
+  residuo  +7.281.626.822     -> batch VIVO
+  TTL      83.050 blocchi ~ 4,8 giorni  -> scade ~mercoledì 16/09
+
+  Formula presa dal bundle di @snaha/swarm-id (funzione Aw), non inventata:
+  (normalisedBalance - currentTotalOutPayment) / lastPrice * 5s
+
+ESITO: gift code VALIDO e FINANZIATO. Margine ~3 giorni oltre la deadline.
+
+RISCATTO: NON automatizzabile. Verificato che l'SDK @snaha/swarm-id non espone
+alcuna API di riscatto (0 occorrenze di gift/redeem/importStamp/addStamp) e che
+getPostageBatch() è di sola lettura; la documentazione swarm.snaha.net/docs non
+menziona affatto i gift code. È un'operazione solo-UI dietro passkey, quindi un
+passaggio umano. Aperto https://swarm-id.snaha.net nel browser.
+
+DATI OPERATIVI: in key.txt (gitignorato, .gitignore:68). NON in questo file,
+che è destinato al repo pubblico.
+
+
+--------------------------------------------------------------------------------
+A3. MCP ARKIV — TROVATO, COLLEGATO, INTERROGATO
+--------------------------------------------------------------------------------
+
+All'inizio NON era configurato (nessun .mcp.json, solo tavily in ~/.claude.json).
+URL recuperato da hub.arkiv.network/ethrome, che risulta LIVE:
+
+  https://arkiv-mcp-gateway.vercel.app/ethrome   (Streamable HTTP, nessuna chiave)
+
+Aggiunto a scope progetto -> .mcp.json (nessun segreto, committabile).
+Server: arkiv-ethrome v1.0.19. Espone 15 tool.
+
+Tool utili per noi:
+  network_status         bootstrap completo in una chiamata
+  generate_entity_model  Postgres CREATE TABLE -> modello entità Arkiv
+  check_schema           controlli deterministici su schema.md
+  check_submission       controlli deterministici sulla submission
+  search/read_knowledge  base di conoscenza ufficiale datata
+
+RISPOSTA ALLA DOMANDA "ci sono comandi per produrre schema.md e friction.md":
+
+  friction.md -> NO. Il tool prepare_feedback è citato nelle istruzioni di
+                 initialize del server ma NON esiste in tools/list. Scritto
+                 a mano. (È la voce F-01 del friction report.)
+
+  schema.md   -> SÌ, ma NON utilizzabile ORA: generate_entity_model pretende
+                 statement PostgreSQL CREATE TABLE. Ancorhash non ha Postgres
+                 né un indexer, quindi non c'è nulla da convertire.
+                 Corollario: Mission 01 (Decommission) è FUORI PORTATA, come
+                 dice il manuale — "If you did not arrive with an indexer
+                 already running, pick another mission".
+                 Mission 02 resta il bersaglio giusto, ed è esattamente quella
+                 per cui la Fase 1 ha già predisposto expiration_seconds.
+
+DATI DI RETE PER LA FASE 2 (da network_status, probe fresco 2026-09-11):
+
+  rete        : Tiramisu
+  chainId     : 7738577
+  RPC         : https://rpc.tiramisu.db-chain.testnet.arkiv.network
+  WebSocket   : wss://rpc.tiramisu.db-chain.testnet.arkiv.network
+  explorer    : https://tiramisu.explorer.arkiv.network
+  faucet      : https://hub.arkiv.network/faucet      (sign-in + CAPTCHA, umano)
+  access keys : https://hub.arkiv.network/access-keys (opzionali, alzano i rate limit)
+  install     : npm install @arkiv-network/sdk@0.8.0 viem
+
+
+--------------------------------------------------------------------------------
+A4. NUOVO FILE: arkiv/friction.md
+--------------------------------------------------------------------------------
+
+7 voci, ognuna con il comando esatto per riprodurla. Nessuna inventata: tutte
+verificate oggi. Vale il 25% del punteggio Arkiv.
+
+  F-01  med   MCP annuncia prepare_feedback ma non lo espone (15 tool, assente)
+  F-02  med   Tre fonti ufficiali, tre versioni SDK: 0.7.x / 0.8.0 / 0.8.1
+  F-03  HIGH  arkiv-sdk e golem-base-sdk ancora pubblicati e NON deprecati su
+              npm, con descrizioni che si dichiarano "part of the Arkiv project"
+  F-04  HIGH  Il Data Explorer non offre Tiramisu (solo braga/kaolin); la pagina
+              dati del block explorer è "EXPERIMENTAL — USE WITH CAUTION".
+              Entrambe le superfici di ispezione pubbliche sono inagibili.
+  F-05  low   EUR 2.500 sul Hub vs $2.500 USDC su Ethereum nel manuale
+  F-06  med   La pagina Hub non contiene il template schema che il manuale dice
+              essere lì
+  F-07  HIGH  Due rubriche vive, e quella stampata è quella vecchia
+
+Include anche una sezione "What worked well" (network_status come bootstrap in
+una sola chiamata; il fatto che l'MCP dichiari i propri limiti con
+verificationScope e tiramisuVerified:false invece di nasconderli). Un report di
+sole lamentele risulta meno credibile di uno calibrato.
+
+Restano 7 voci runtime da riempire costruendo la Fase 2: faucet, primo write,
+query composta, comportamento della scadenza, websocket vs polling. Sono già
+elencate come checklist in fondo al file.
+
+NOTA SUL NOME: il manuale dice friction.md, le istruzioni dell'MCP dicono
+feedback.md. Scelto friction.md in arkiv/. Rinominabile in un secondo.
+
+
+--------------------------------------------------------------------------------
+A5. FILE TOCCATI IN QUESTA SESSIONE
+--------------------------------------------------------------------------------
+
+NUOVO  arkiv/friction.md    report di friction, 7 voci verificate
+NUOVO  .mcp.json            MCP Arkiv, scope progetto (nessun segreto)
+(key.txt è stato creato e poi ELIMINATO dall'utente: il gift code è già
+ stato riscattato e lo stamp è attivo. Resta in .gitignore per sicurezza.)
+MOD    .gitignore           +key.txt, +*.key, +gift-code* (sezione segreti)
+MOD    a.txt                questa appendice
+
+Nessuna modifica al codice dell'applicazione in questa sessione.
+
+
+--------------------------------------------------------------------------------
+A6. PROSSIMO PASSO
+--------------------------------------------------------------------------------
+
+1. UMANO: riscattare il gift code su https://swarm-id.snaha.net (vedi key.txt).
+   Verifica: nell'app il badge passa da "Non disponibile" a "Pronto".
+2. Fase 2 su Tiramisu, catturando la friction mentre accade invece di
+   ricostruirla dopo.
+3. Rendere pubblico il repository (requisito di regolamento) — DOPO aver
+   controllato che key.txt non sia tracciato: `git status --short | grep key`
+
+================================================================================
+
+
+================================================================================
+APPENDICE B · SESSIONE 3 — STEP 0 (housekeeping) + STEP 1 (architettura)
+Data: 2026-09-11
+================================================================================
+
+--------------------------------------------------------------------------------
+B0. RETTIFICHE APPLICATE A QUESTO DOCUMENTO
+--------------------------------------------------------------------------------
+
+- Sezione 9: la "SCADENZA DURA" del sabato è marcata SUPERATA (vedi A1).
+- Sezione 9: "friction vale un quinto" corretto -> vale il 25%, un QUARTO.
+- Sezione 9: arkiv/schema.md non è più requisito di qualificazione; lo
+  scriviamo comunque come lavoro di design e indice delle evidenze.
+- A5: key.txt rimosso dall'elenco (eliminato dall'utente, gift code già
+  riscattato, stamp attivo). Resta in .gitignore per sicurezza.
+
+
+--------------------------------------------------------------------------------
+B1. STEP 0a — F-01 RITIRATA: ERRORE NOSTRO
+--------------------------------------------------------------------------------
+
+F-01 sosteneva che il MCP annunciasse prepare_feedback senza esporlo.
+ERA SBAGLIATA. prepare_feedback ESISTE: è un MCP **prompt**, non un tool.
+
+  prompts/list -> 9 prompt:
+    start, prepare_feedback, minimal_app, integrate_package, model_entities,
+    diagnose_query, apply_skill, qualify, migrate
+
+Stesso server, serverVersion 1.0.19, configRevision 2026-09-11.4: la STESSA
+revisione sondata in sessione 2. Non è comparso fra le sessioni: c'era da
+sempre. L'errore è stato chiamare solo tools/list e mai prompts/list, pur
+avendo la capability "prompts" dichiarata nella risposta di initialize.
+
+AZIONE: voce ELIMINATA, non ammorbidita. Le restanti sono state rinumerate
+F-01..F-06. La ritrattazione è documentata nell'intestazione di friction.md.
+
+LEZIONE OPERATIVA: un MCP espone tools + prompts + resources. Sondarli tutti
+e tre prima di dichiarare assente qualcosa. In un file che vale il 25%, una
+voce non verificata mina anche quelle corrette.
+
+BONUS: lo stesso controllo ha rivelato 289 resources, fra cui
+docs/querying, sdk-ethrome/query, sdk-ethrome/createentity,
+official/typescript-sdk/mutating-data, official/json-rpc/mutating-entities.
+Sono le fonti verificate che servono per lo STEP 2.
+
+
+--------------------------------------------------------------------------------
+B2. STEP 0c — SCANSIONE SEGRETI: PULITA (due scanner concordi)
+--------------------------------------------------------------------------------
+
+gitleaks 8.30.1, 21 commit, ~622 KB: 1 finding, FALSO POSITIVO.
+
+  [generic-api-key] README.md:161  commit 4ca9f512  entropy 3.55
+  Match: Evm__RelayerPrivateKey": "0xLA_TUA_CHIAVE_PRIVATA"
+
+È un placeholder in italiano. Accanto, Turnstile__SecretKey contiene la
+chiave di test pubblica di Cloudflare. Il commit sta sul branch
+feature/azure-ai-water-sampling, non su main né su ethrome-2026.
+
+La scansione nativa a pattern (492 oggetti) aveva già dato lo stesso esito:
+solo placeholder 0xabcdef... nei test, hash di cache MSBuild, e un SHA-256
+di esempio nel README. Nessun segreto reale nella history.
+
+IGIENE (non segreti): bin/ e obj/ sono committati
+(src/Ancorhash.Core/obj/..., src/Ancorhash.Infrastructure/bin/...).
+Sporcano il diff che leggeranno i giudici.
+
+
+--------------------------------------------------------------------------------
+B3. STEP 0d — IL BRANCH NON HA COMMIT  [AZIONE RICHIESTA]
+--------------------------------------------------------------------------------
+
+  ethrome-2026 -> b83b45c  2026-08-05
+  main         -> b83b45c  2026-08-05
+  git rev-list --count main..ethrome-2026  ->  0
+
+Tutta la Fase 1 è working tree non committato. Per manual/rules.md:52
+contano solo i commit successivi all'inizio dell'hackathon: al momento il
+lavoro conteggiabile è ZERO. L'utente ha scelto "Commit Phase 1 now" ma la
+domanda è stata poi ritirata: NULLA È STATO COMMITTATO.
+
+Tag proposto (il fork point coincide con il tip):
+  git tag -a pre-ethrome-2026 b83b45c -m "Baseline before ETHRome 2026"
+  git push origin pre-ethrome-2026
+I giudici diffano pre-ethrome-2026..HEAD.
+
+Repo: https://github.com/N0g4D/azure-web3-notarizer.git
+
+
+--------------------------------------------------------------------------------
+B4. FATTI ARKIV VERIFICATI (fonti citate, nulla inventato)
+--------------------------------------------------------------------------------
+
+Da official/typescript-sdk/mutating-data:
+
+  Entità   = payload + contentType (MAI indicizzati, max 128 KiB)
+           + attributes (max 30, tipizzati, indicizzati)
+           + expires (altezza di BLOCCO, non secondi)
+  engine   -> key (32 byte), owner, creator, createdAt, updatedAt, expiresAt
+  Nomi attributo: 1-32 ASCII, minuscola iniziale, poi [a-z0-9._-], snake_case.
+  Riservati: prefisso $, sequenza --, e le parole and/or/not/true/false/
+  startswith/exists/typeof + i tag di tipo.
+
+  TIPI E OPERATORI (da @arkiv-network/sdk/attr):
+    str      <=128 byte UTF-8      eq, startsWith
+    bool                           eq
+    i32      -2^31 .. 2^31-1       eq, range
+    u64      0 .. 2^64-1           eq, range
+    u256     0 .. 2^256-1          eq, range
+    dec      decimale <=18 cifre   eq, range
+    addr     20 byte               eq
+    key      32 byte entity key    eq
+    bytes32  32 byte qualsiasi     eq
+
+  Solo i quattro tipi numerici hanno indice ordinato. Un numero salvato come
+  str supporta solo eq e prefisso. I valori vanno SEMPRE avvolti nel
+  costruttore: eq("seller", str(...)) e eq("seller", addr(...)) sono domande
+  diverse e solo quella col tipo giusto trova l'entità.
+
+Da official/json-rpc/mutating-entities:
+
+  Precompile Arkiv : 0x4400000000000000000000000000000000000044 (uguale su
+                     ogni chain Arkiv)
+  BLOCK TIME       : 2 SECONDI      <-- serve per expiration_seconds -> blocchi
+  Transaction value: 0
+  Calldata         : execute((uint8 operation, bytes operationData)[] ops)
+                     selector 0x49650044, batch atomico e ordinato
+  Tag operazioni   : 1 Create, 2 Patch, 3 Extend Expiry,
+                     4 Transfer Ownership, 5 Delete
+  Create struct    : (uint128 salt, uint64 expiresAt, uint64 minLifetime,
+                      uint8 creationFlags, Attribute[] attributes)
+                     expiresAt = blocco assoluto di scadenza
+
+CONSEGUENZA DI PROGETTO: expiration_seconds deve essere convertito in
+blocchi (secondi / 2) e sommato al blocco corrente per ottenere expiresAt.
+Il preset demo da 60 s corrisponde a ~30 blocchi.
+
+
+--------------------------------------------------------------------------------
+B5. STEP 1 — DECISIONE DI ARCHITETTURA (PROPOSTA, in attesa di review)
+--------------------------------------------------------------------------------
+
+Opzioni valutate:
+
+(a) C# puro via Nethereum
+    FATTIBILE, e più di quanto sembrasse: il protocollo è documentato per
+    intero (precompile, selector, struct). Nethereum sa mandare quella
+    transazione.
+    COSTO: va codificato a mano Attribute[] per tutti e nove i tipi e va
+    reimplementato anche il lato query, senza rete di sicurezza. La pagina
+    ufficiale stessa dice "Most developers should use the TypeScript SDK
+    instead of raw transactions".
+    RESA PER IL PUNTEGGIO: nessuna. Arkiv valuta "Why Arkiv" e "Technical
+    execution", non la reimplementazione dell'SDK in C#.
+    -> Scartata per rischio/tempo, non per impossibilità.
+
+(b) Azure Function TypeScript per le sole scritture
+    SDK ufficiale, rischio basso, modello gas-sponsored intatto.
+    Ma anche le letture passerebbero dal backend: un hop in più, e la prova
+    della Mission 02 (stessa query prima/dopo la scadenza) diventa goffa da
+    mostrare.
+
+(c) IBRIDO: scritture firmate dal relayer (TS) + query in sola lettura dal
+    frontend React                                      <-- RACCOMANDATA
+    - Scritture: SDK ufficiale, lato server, firmate dal relayer. Gas
+      sponsorizzato, owner delle entità coerente, l'utente non ha bisogno di
+      un wallet (coerente con l'attuale MOCK_WALLET_ADDRESS).
+    - Letture: public client direttamente da React verso l'RPC Tiramisu.
+      Nessun hop, e soprattutto la prova della Mission 02 gira DAL VIVO
+      nella UI davanti ai giudici: è esattamente ciò che la mission chiede.
+    - Predispone anche la Mission 03 (subscribe via websocket), se la
+      vorremo.
+
+    TRADE-OFF DA DICHIARARE, non da nascondere:
+    - Due runtime: .NET per la notarizzazione, Node per Arkiv.
+    - Owner delle entità = wallet del relayer. Quindi "org" è DICHIARATO,
+      non dimostrato dalla firma. Va scritto nello schema.
+    - L'access key NON va nel frontend: finirebbe nel bundle. Il frontend
+      usa l'RPC pubblico rate-limited; l'access key resta lato backend.
+
+Friction registrata: F-07 (nessun SDK .NET). Non è un bug, è un gap, ed è
+quello che ha spostato l'architettura.
+
+
+--------------------------------------------------------------------------------
+B6. FILE TOCCATI IN QUESTA SESSIONE
+--------------------------------------------------------------------------------
+
+MOD    arkiv/friction.md   F-01 eliminata, voci rinumerate F-01..F-06,
+                           ritrattazione in testa, aggiunta F-07 (.NET SDK)
+MOD    a.txt               rettifiche sezione 9 e A5 + questa appendice B
+NUOVO  (nessuno)
+INSTALL gitleaks 8.30.1 via brew (autorizzato)
+
+Nessuna modifica al codice dell'applicazione. Nessun pacchetto npm
+installato: @arkiv-network/sdk@0.8.0 verrà installato allo STEP 4, previa
+conferma.
+
+================================================================================

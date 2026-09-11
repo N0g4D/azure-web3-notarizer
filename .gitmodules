@@ -1,0 +1,3 @@
+[submodule "hacker-manual"]
+	path = hacker-manual
+	url = https://github.com/urbeETH/ethrome-2026-hacker-manual.git
