@@ -175,7 +175,10 @@ Ancorhash is .NET 10 / Azure Functions with an existing Nethereum relayer.
 `list_packages` returns four packages, all npm: `@arkiv-network/sdk@0.8.0`
 (peer deps `viem ^2.0.0`, `typescript >=5.0.0`, `node >=18`), `arkiv-graph`,
 `arkiv-chunking`, `arkiv-images`. Searching the knowledge base for
-`dotnet C# SDK` and `csharp client` returns no .NET client.
+`dotnet C# SDK` and `csharp client` returns no .NET client. A Python SDK does
+exist (`Arkiv-Network/arkiv-sdk-python`, referenced from `guides/known-issues`
+with the caveat "Python source checked; Python execution not verified"), so
+the gap is specifically .NET, not "TypeScript only".
 
 **To be fair, the low-level path is fully documented** and we verified it in
 `official/json-rpc/mutating-entities`: mutations are ordinary Ethereum
@@ -197,6 +200,60 @@ structs but stops short of the attribute value encoding a non-TS
 implementer needs most.
 
 **Observed:** 2026-09-11, SDK 0.8.0, MCP `arkiv-ethrome` v1.0.19.
+
+---
+
+## F-08 · `check_schema` counters do not fire on valid input
+
+**Severity:** medium — two of its warnings cannot be cleared, so a team either
+churns on them or learns to ignore the tool.
+
+`check_schema` returns an `observed` block with four counters. Two of them stay
+at `0` regardless of what we send, while the matching warnings keep firing.
+
+**`entityTypeHeadings` never leaves 0.** The warning says *"No entity type
+heading was recognized."* We tried, in our real 430-line schema and then in
+minimal documents, `## 2. Entity type: \`notarization\``,
+`### Entity type: notarization` and `## Entities` + `### notarization`. All
+return `entityTypeHeadings: 0`.
+
+**Reproduce with five lines** — no project needed:
+
+```bash
+EP=https://arkiv-mcp-gateway.vercel.app/ethrome
+curl -s -X POST "$EP" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_schema",
+       "arguments":{"text":"# Schema\n\n## Entity type: notarization\n\nArkiv entities hold one notarization each.\n"}}}'
+```
+
+**Observed:** `{"entityTypeHeadings": 0, ...}` plus the warning.
+**Expected:** either that heading counts, or the warning states the format it
+wants. Today there is no way to satisfy it and no documented target.
+
+**`multiFilterQueries` also stays 0.** Our file contains four `select()` chains
+with three to five predicates each, both chained `.where(...).where(...)` and
+several predicates inside one `where(a, b)`. `queryBuilderCalls` correctly
+counted 4; `multiFilterQueries` stayed 0. Since query depth is the largest
+scoring slice, a counter that reads 0 on genuinely compound queries is the one
+most likely to mislead a team into rewriting working queries.
+
+**Same for the vocabulary gate.** It asks for the product term *"Arkiv
+entities"*; the file contains that exact phrase five times and the warning
+persists.
+
+**Caveat, stated honestly:** it is possible the checker expects a specific
+structured format we did not guess. If so the gap is the message, which names
+a heading rather than the format. The tool is explicit that it is a
+`shallow_text_check` and *"does not prove application quality or a judging
+outcome"*, so none of this is fatal — but the three findings above are the
+ones a team cannot act on.
+
+**What we did:** fixed the four actionable warnings (6 → 2), and left these
+two rather than contorting the document to chase a regex.
+
+**Observed:** 2026-09-11, MCP `arkiv-ethrome` v1.0.19, `configRevision`
+`2026-09-11.4`.
 
 ---
 

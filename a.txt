@@ -631,3 +631,149 @@ installato: @arkiv-network/sdk@0.8.0 verrà installato allo STEP 4, previa
 conferma.
 
 ================================================================================
+
+
+================================================================================
+APPENDICE C · STEP 2 (arkiv/schema.md) + STEP 2b (Why Arkiv)
+Data: 2026-09-11
+================================================================================
+
+C0. VERIFICA GIT (richiesta dall'utente)
+--------------------------------------------------------------------------------
+  git log --oneline pre-ethrome-2026..ethrome-2026
+  -> 7c85349 ETHRome Phase 1: encrypted Swarm storage with Swarm ID
+
+  13 file, +1840/-167. Contiene swarm.ts, App.tsx, api.ts, friction.md,
+  a.txt, .mcp.json, .gitignore, .gitmodules, gitlink hacker-manual.
+  bin/obj tracciati: 0. obj/ ignorato (.gitignore:74).
+  HEAD == origin/ethrome-2026 == 7c85349. Tag pre-ethrome-2026 -> b83b45c,
+  pushato. CORRETTO.
+  Nota minore: hacker-manual risulta untracked in status pur avendo gitlink e
+  .gitmodules committati; un clone pulito richiede --recurse-submodules.
+
+
+C1. STEP 2 — arkiv/schema.md
+--------------------------------------------------------------------------------
+Un solo entity type: notarization. 9 attributi su 30 disponibili.
+
+  app             str      ancora di ogni query (serve >=1 filtro)
+  type            str      lascia spazio ad altri record kind
+  schema_version  i32      numerico per gte() in migrazione; str ordinerebbe
+                           "10" prima di "9"
+  document_hash   bytes32  SHA-256 E' esattamente 32 byte -> tipo nativo
+  swarm_address   bytes32  indirizzo Swarm = 32 byte -> idem
+  org             str      slug, eq + startsWith
+  doc_type        str      slug, eq + startsWith
+  chain_id        u64      i32 basterebbe oggi, ma i chain id EIP-155 sono
+                           unsigned e possono superare 2^31
+  notarized_at    u64      NON NEGOZIABILE: solo i 4 tipi numerici hanno
+                           indice ordinato. Come str avrebbe solo eq e
+                           startsWith -> muore ogni query a finestra
+                           temporale. Date.now() non entra in i32.
+
+SCELTA CONTROCORRENTE RISPETTO ALLA RICHIESTA: document_hash e swarm_address
+sono bytes32, non str. Come str funzionerebbero (64 char < 128 byte) ma
+darebbero solo eq/startsWith e occuperebbero 64 byte di indice invece di 32.
+bytes32 dà solo eq, e non perde nulla: il prefisso di un digest non è una
+domanda sensata. Se servisse la ricerca per hash breve si aggiungerà un
+attributo separato document_hash_hex:str, senza degradare il primario.
+
+PAYLOAD (mai indicizzato): tx_hash, anchor_chain, explorer_url, description.
+Criterio: un attributo si guadagna il posto solo se compare in un where().
+
+FUORI DA ARKIV: reference Swarm completa (128 hex = indirizzo + CHIAVE),
+contenuto del file, nome del file, dati personali.
+
+4 query composte scritte in sintassi verificata, tutte ancorate con
+createdBy(RELAYER_ADDRESS): $creator è immutabile e non falsificabile, mentre
+app:"ancorhash" è una stringa che chiunque può copiare sulle proprie entità.
+
+
+C2. LA SCOPERTA CHE HA CAMBIATO IL DESIGN
+--------------------------------------------------------------------------------
+Prima bozza: ExpirationTime.fromSeconds(). SBAGLIATO per una demo osservata.
+
+check_schema del MCP ha risposto:
+  "Tiramisu makes no wall-clock promise. On 2026-09-04 the idle sample was
+   ~20 seconds per block, while a loaded sample was ~2 seconds per block.
+   That 10x range means fromMinutes(2) could have taken roughly 20 real
+   minutes or roughly 2. For anything a judge has to watch, use
+   ExpirationTime.fromBlocks(n), read expiresAt back from the receipt, and
+   remeasure the current cadence before the demo."
+
+MISURAZIONE NOSTRA (2026-09-11, head 326556, RPC Tiramisu):
+  ultimi   50 blocchi:  100 s -> 2.00 s/blocco
+  ultimi  200 blocchi:  400 s -> 2.00 s/blocco
+  ultimi 1000 blocchi: 2000 s -> 2.00 s/blocco
+Rete a cadenza nominale ADESSO. Proprio per questo il design non deve
+dipenderne: una notte di rete scarica allungherebbe 30 blocchi da 60 s a
+~10 minuti e la demo diventerebbe inguardabile.
+
+CONVERSIONE (richiesta esplicitamente):
+  blocchi          = ceil(expiration_seconds / 2)
+  expiresAt(block) = landingBlock + blocchi
+
+  demo    60 s -> 30 blocchi
+  1 g  86400 s -> 43.200
+  30 g          -> 1.296.000
+  3650 g        -> 157.680.000
+
+SI USA ExpirationTime.fromBlocks(), l'unica forma senza conversione. Le
+helper wall-clock restano inutilizzate. expiresAt viene RILETTO da
+createEntity() e registrato come verità, mai la nostra stima.
+
+Scelto il pattern "lapse" e non lo sliding lease: un record letto spesso non
+deve sopravvivere alla propria retention, altrimenti si ribalta l'argomento
+GDPR. Documentato anche che un'estensione IMPOSTA una nuova scadenza da ora,
+non somma, e che il motore rifiuta un'estensione che non sposti più avanti.
+
+
+C3. check_schema: 6 warning -> 2
+--------------------------------------------------------------------------------
+Corretti: sezione entity type, sezione "off Arkiv", token dei predicati non
+supportati, Lifetime Extension.
+
+I 2 rimasti NON sono lacune di contenuto: entityTypeHeadings e il gate
+vocabolario non scattano nemmeno su un documento minimo che contiene
+esattamente ciò che chiedono. Verificato con documenti di 5 righe.
+Registrato come F-08.
+
+Predicati esportati dall'SDK ma RIFIUTATI dal nodo (-32002): not-equal,
+presence-test, type-test. Negazione via not(eq(...)), che però è il
+complemento completo e include le entità che l'attributo non l'hanno mai
+avuto: per questo ogni query mantiene un'ancora positiva.
+
+
+C4. STEP 2b — "Why Arkiv?" nel README (30% del punteggio)
+--------------------------------------------------------------------------------
+Tesi: "un notaio di cui ti devi fidare non è un notaio". Su Postgres
+l'operatore può cancellare una riga, cambiare un timestamp o inserirne una
+retrodatata, e nulla nel database lo impedisce o lo registra: il cliente non
+si affida alla crittografia ma alla buona condotta di Ancorhash, cioè
+esattamente la dipendenza che il prodotto dichiara di rimuovere.
+
+Su Arkiv l'indice stesso è prova: ogni entità è una transazione firmata,
+$creator è immutabile e non falsificabile, e un verificatore controlla senza
+la nostra API e senza il nostro permesso.
+
+Scadenza nativa = minimizzazione GDPR espressa dal dato, non da una retention
+policy che nessuno può verificare.
+
+Separazione privacy: cifrato su Swarm, solo impegni sull'indice pubblico.
+
+PARAGRAFO ONESTO incluso: un database normale farebbe meglio quasi tutto
+(più veloce, più economico, join, full-text, niente block time). Arkiv si
+guadagna il posto su UN SOLO asse: un verificatore avversariale che non si
+fida dell'operatore. Tolto quel lettore, l'argomento crolla.
+E: org è DICHIARATO, non dimostrato dalla firma.
+
+
+C5. FILE TOCCATI
+--------------------------------------------------------------------------------
+NUOVO  arkiv/schema.md      design completo, 8 sezioni
+MOD    README.md            sezione "Why Arkiv?" (~60 righe)
+MOD    arkiv/friction.md    +F-08, F-07 precisata (esiste un SDK Python)
+MOD    a.txt                questa appendice
+
+Nessun pacchetto installato. Nessun codice di integrazione scritto:
+lo STEP 3 attende la review.

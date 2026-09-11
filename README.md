@@ -22,6 +22,72 @@ Ancorhash allows users to timestamp and notarize documents on EVM-compatible blo
 
 ---
 
+## Why Arkiv?
+
+*Why a notarization registry needs a Web3 database, and not Postgres.*
+
+**A notary that you have to trust is not a notary.** Ancorhash's product is a
+claim a third party can check: *this document existed, in this form, at this
+time.* The proof is only as strong as the weakest thing the verifier must take
+on faith — and in a conventional stack, that weakest thing is us.
+
+Put the registry in Postgres and the operator can delete a row, change a
+timestamp, or insert one dated last year. Nothing in the database resists it,
+and nothing in it records that it happened. A customer in a dispute cannot
+tell the difference between a real record and one we wrote this morning, so
+they are not relying on cryptography — they are relying on Ancorhash's good
+behaviour and continued existence. That is precisely the dependency the
+product claims to remove.
+
+**Arkiv makes the index itself evidence.** Every entity is a signed
+transaction on a public chain. The record's `$creator` is immutable and
+unforgeable, so a verifier can confirm a record was written by the Ancorhash
+relayer and not fabricated afterwards — and can do it without our cooperation,
+our API, or our permission. We cannot quietly rewrite history, because we do
+not own the history.
+
+**Expiry that the data enforces, not a policy nobody can audit.** Under GDPR,
+data minimisation means not keeping records longer than necessary. In a normal
+database that is a retention policy: a cron job, a config value, a promise. A
+regulator cannot verify a promise, and a backup silently outlives it. Arkiv
+entities carry their own expiry: the record stops being returned by queries
+when its time is up, with no delete call and no job to trust. Retention stops
+being something we assert and becomes something the data does.
+
+**The privacy split is what makes a public index safe.** The document is
+encrypted in the browser and stored on Swarm; the decryption key never leaves
+the client. What reaches Arkiv is only commitments — a SHA-256 hash, a 64-hex
+Swarm address, an organisation slug, a timestamp. Public enough to verify,
+empty enough to publish. Arkiv's own brief is blunt that this is the required
+posture: *"It is not a confidentiality layer… store a hash or a commitment
+instead."* The queryable index and the confidential payload are different
+systems, on purpose.
+
+### The honest part
+
+Two limits we would rather state than have a judge find.
+
+**`org` is declared, not proven.** Entities are signed by our relayer wallet,
+which is what lets corporate users notarize without ever touching a wallet or
+holding crypto. The signature proves *Ancorhash wrote this record*. It does
+**not** prove the named organisation authorised it. Making `org` provable
+requires the organisation to hold its own key, or an attestation from a
+trusted issuer — real work, and not 40 hours of it.
+
+**And a normal database would be fine for most of this.** Postgres would serve
+the dashboard faster, cheaper, with richer queries, full-text search, joins and
+no block times. If Ancorhash were an internal document tracker, Postgres would
+be the right answer and Arkiv would be overhead. The Web3 database earns its
+place on exactly one axis: **an adversarial verifier who does not trust the
+operator.** Take that reader away and the argument collapses. Keep them — and
+for a notarization service they are the only reader who matters — and a
+private database cannot do the job at any price.
+
+> The mechanical design (attributes, types, expiry arithmetic, queries) is in
+> [`arkiv/schema.md`](arkiv/schema.md).
+
+---
+
 ## System Architecture
 
 The V2 architecture separates the local hashing and intelligence layer from the Web3 transactional layer, ensuring complete data privacy.
