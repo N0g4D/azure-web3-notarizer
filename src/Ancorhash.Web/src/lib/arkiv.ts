@@ -115,7 +115,104 @@ export async function findByDocumentHash(
   const page = await anchored()
     .where(eq('document_hash', bytes32(toHex32(documentHash))))
     .fetch()
-  return page.entities.map(toRecord)
+  // Same collapse as the register: re-indexing can leave more than one entity
+  // for a document, and the caller wants the live one.
+  return dedupeByDocument(page.entities.map(toRecord))
+}
+
+/**
+ * Registry listing: every notarization this creator wrote, narrowed by the
+ * filters the caller supplies.
+ *
+ * This is the auditor's entry point, and it is deliberately usable with no
+ * filters at all. `app` + `type` + `createdBy()` already satisfies Arkiv's
+ * "a query needs at least one filter" rule, so the registry can be browsed by
+ * someone who does not yet know which organisation slugs exist — which is the
+ * normal case for a third party reviewing what was registered.
+ *
+ * `org` and `doc_type` narrow by equality and `notarized_at` by an ordered
+ * range (possible only because it is `u64`) — all server-side, in one
+ * compound query.
+ *
+ * `expiringWithinBlocks` is deliberately NOT a server-side predicate, and the
+ * reason is worth stating. A range on `$expiresAt` filters *entities*, but the
+ * question being asked is about *documents*, and a document's real expiry is
+ * the maximum over its entities (see `dedupeByDocument`). Filtering on the
+ * server first would surface a superseded entity while leaving its live
+ * replacement outside the result set — reporting a document as lapsing when it
+ * is not. We observed exactly that: an old 24 h entity matched while its
+ * 7-day replacement did not. So the set is deduped to a true per-document
+ * expiry first, then filtered. `findExpiringWithin` below keeps the pure
+ * server-side range for the cases that genuinely ask about entities.
+ */
+export interface RegistryFilters {
+  org?: string
+  docType?: string
+  /** Epoch ms: only records notarized at or after this instant. */
+  sinceMs?: number
+  /** Only records whose index entry lapses within this many blocks. */
+  expiringWithinBlocks?: bigint
+  limit?: number
+}
+
+/**
+ * Collapses several entities for the same document into one, keeping the
+ * longest-lived.
+ *
+ * The chain enforces one token per document — `tokenId == uint256(documentHash)`,
+ * so a second mint reverts. **Arkiv enforces no such rule**: attributes are not
+ * unique, so the index can legitimately hold two entities for one document.
+ * That is not corruption, it is the recovery path working: when an anchor
+ * succeeds but the index write fails (`arkiv_indexed: false`), re-indexing
+ * writes a fresh entity beside the old one, and re-indexing after a lapse does
+ * the same.
+ *
+ * A register should show one row per document, so the read path collapses them
+ * and keeps the entry that is still valid furthest into the future.
+ */
+export function dedupeByDocument(records: NotarizationRecord[]): NotarizationRecord[] {
+  const best = new Map<string, NotarizationRecord>()
+  for (const record of records) {
+    const key = record.documentHash ?? record.entityKey
+    const seen = best.get(key)
+    if (
+      seen === undefined ||
+      (record.expiresAtBlock ?? 0n) > (seen.expiresAtBlock ?? 0n)
+    ) {
+      best.set(key, record)
+    }
+  }
+  return [...best.values()]
+}
+
+export async function queryRegistry(
+  filters: RegistryFilters = {},
+): Promise<{ head: bigint; records: NotarizationRecord[] }> {
+  const head = await publicClient.getBlockNumber()
+  let builder = anchored()
+
+  if (filters.org) builder = builder.where(eq('org', str(filters.org)))
+  if (filters.docType) {
+    builder = builder.where(eq('doc_type', str(filters.docType)))
+  }
+  if (filters.sinceMs !== undefined) {
+    builder = builder.where(gte('notarized_at', u64(BigInt(filters.sinceMs))))
+  }
+  const page = await builder.limit(filters.limit ?? 100).fetch()
+  let records = dedupeByDocument(page.entities.map(toRecord))
+
+  // Applied after the collapse, so it reads a document's true expiry.
+  if (filters.expiringWithinBlocks !== undefined) {
+    const deadline = head + filters.expiringWithinBlocks
+    records = records.filter(
+      (r) => r.expiresAtBlock !== undefined && r.expiresAtBlock < deadline,
+    )
+  }
+
+  // Newest first: the index has no ordering guarantee we can rely on, and an
+  // auditor reads a register from the most recent entry backwards.
+  records.sort((a, b) => (b.notarizedAt ?? 0) - (a.notarizedAt ?? 0))
+  return { head, records }
 }
 
 /** Q2 — an organisation's records within a time window. */
