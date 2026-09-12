@@ -24,6 +24,13 @@ public sealed class NetworkConfig
     public bool IsTestnet { get; init; }
 
     /// <summary>
+    /// Indirizzo del contratto ConfidentialRWA su questa rete. Se vuoto, la
+    /// notarizzazione ricade sulla transazione dati a 0 valore (comportamento
+    /// pre Fase 3). Con l'indirizzo, il relayer chiama mintNotarization.
+    /// </summary>
+    public string? ContractAddress { get; init; }
+
+    /// <summary>
     /// Prefisso URL dell'explorer per una transazione, es.
     /// "https://testnet.snowtrace.io/tx/". Finisce nel payload Arkiv come
     /// link di verifica: è un dato pubblico, non un segreto.

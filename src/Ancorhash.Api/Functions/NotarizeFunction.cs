@@ -83,6 +83,16 @@ public sealed class NotarizeFunction(
                 command.DocumentId, ex.ChainId);
             return Error(StatusCodes.Status400BadRequest, ex.Message);
         }
+        catch (DuplicateNotarizationException ex)
+        {
+            // Non è un guasto: è la regola d'asset del contratto.
+            // tokenId == uint256(documentHash), quindi un documento si
+            // notarizza una volta sola. 409, non 500.
+            logger.LogInformation(
+                "Notarize rifiutata per documento {DocumentId}: hash già notarizzato on-chain",
+                command.DocumentId);
+            return Error(StatusCodes.Status409Conflict, ex.Message);
+        }
         catch (ArkivIndexingException ex)
         {
             // Arkiv gira prima del relayer: qui nessun gas è stato speso.

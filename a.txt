@@ -1096,3 +1096,152 @@ E7. PROSSIMO PASSO
    polling e non sleep, cadenza dei blocchi rimisurata poco prima.
 4. Decidere se affrontare davvero il Track B di Team1 (vedi E4) o puntare
    solo su Arkiv e Swarm.
+
+
+================================================================================
+APPENDICE F · FASE 3 REALE — RWA TOKENIZZATO SU AVALANCHE FUJI (Team1 Track B)
+Data: 2026-09-12
+================================================================================
+
+NOTA: la richiesta citava "a_3.txt". Quel file non esiste; la sezione E4 è in
+a.txt ed è stata letta da lì.
+
+
+F1. IL CONTRATTO — src/Ancorhash.Contracts/src/ConfidentialRWA.sol
+--------------------------------------------------------------------------------
+ERC721 su OpenZeppelin v5.1.0, Solidity 0.8.28, progetto Foundry.
+Le tre cose che manual/prizes.md:242 pretende per il Track B, in ordine:
+
+ASSET RULE
+  mintNotarization(bytes32 documentHash, bytes32 swarmAddress) -> uint256
+  tokenId == uint256(documentHash). L'unicità non è un controllo che qualcuno
+  può dimenticare di scrivere: è una proprietà del tipo. Il secondo mint dello
+  stesso documento rientra da solo, dentro _mint di OZ.
+  Stato: swarmAddressOf[tokenId], notarizedAtBlock[tokenId].
+  Il token è emesso a msg.sender, cioè alla banca / relayer.
+
+TRANSFER POLICY
+  mapping(address => bool) public kycApproved, scritta solo da setKycApproval
+  (onlyOwner). Applicata dentro _update, che in OZ v5 è il punto unico da cui
+  passa OGNI movimento: non esiste un percorso che la aggiri, né transferFrom
+  né safeTransferFrom. Mint (from==0) e burn (to==0) restano liberi.
+
+SETTLEMENT
+  settlePurchase(uint256 tokenId) external payable, prezzo fisso 0.01 ether.
+  Delivery-versus-Payment atomico: verifica il prezzo, verifica il KYC del
+  compratore, sposta il token, POI invia i fondi al venditore.
+  Ordine checks-effects-interactions + nonReentrant, perché il venditore può
+  essere un contratto. Se il venditore rifiuta i fondi, l'intera transazione
+  rientra: né consegna né pagamento.
+
+
+F2. PROVATO, NON SOLO SCRITTO
+--------------------------------------------------------------------------------
+forge build    38 file, Solc 0.8.28, successo
+forge test     14 test, 14 PASS, 0 FAIL
+
+  asset rule      tokenId derivato dall'hash · duplicato rientra ·
+                  documenti distinti -> token distinti · input a zero rifiutati
+  transfer policy destinatario non-KYC rientra · anche via safeTransferFrom ·
+                  solo l'owner approva · la revoca blocca i trasferimenti
+  settlement      DvP sposta token e fondi insieme · prezzo sbagliato rientra ·
+                  compratore non-KYC rientra · non si compra da sé ·
+                  ATOMICITÀ: venditore ostile che rifiuta i fondi -> il token
+                  non si muove e il compratore non paga
+
+GIRO COMPLETO SU CATENA VERA (anvil locale), con lo script di deploy:
+  deploy      ConfidentialRWA -> 0x5FbDB2315678afecb367f032d93F642f64180aa3
+  mint        status 1, owner corretto, swarmAddressOf corretto
+  duplicato   revert 0x73c6ac6e
+  non-KYC     revert RecipientNotKycApproved
+  settlement  status 1, token al compratore, venditore +0.01 ETH esatti
+
+Questo prova anche lo script di deploy, senza spendere un centesimo su Fuji.
+
+
+F3. C# — CHIAMATA TIPIZZATA, NON PIÙ TRANSAZIONE DATI
+--------------------------------------------------------------------------------
+NUOVO  Blockchain/Contracts/MintNotarizationFunction.cs
+       [Function("mintNotarization","uint256")] con due [Parameter("bytes32")].
+       La firma NON è inventata: viene dall'ABI prodotto da forge
+       (out/ConfidentialRWA.sol/ConfidentialRWA.json).
+       Selector verificato con cast: 0xc7eecb2b.
+       Calldata attesa verificata: 0xc7eecb2b + 32 byte hash + 32 byte swarm.
+
+MOD    NethereumBlockchainRelayer.cs
+       SendNotarizationAsync ora accetta anche swarmAddress e:
+       - con ContractAddress configurato -> mintNotarization tipizzato,
+         SendRequestAndWaitForReceiptAsync, quindi il tx_hash restituito è di
+         una transazione GIÀ INCLUSA, non solo accettata in mempool. È ciò che
+         serve alla Fase 2 per iniettarlo nel payload Arkiv.
+       - senza ContractAddress -> fallback alla vecchia transazione dati, con
+         LogWarning esplicito: "nessun token RWA viene emesso".
+       HexToBytes32() converte 64 hex -> 32 byte e rifiuta lunghezze diverse.
+       receipt.Status == 0 -> trattato come duplicato.
+
+MOD    IBlockchainRelayer.cs, NotarizationService.cs   passano swarmAddress
+MOD    BlockchainOptions.cs                            + ContractAddress
+NUOVO  DuplicateNotarizationException.cs
+MOD    NotarizeFunction.cs                             409 Conflict sul duplicato
+
+GESTIONE DUPLICATI (scelta confermata): il contratto rientra, il backend lo
+traduce in 409 con messaggio parlante invece del 500 opaco di prima. Prima del
+mint c'è anche una view isNotarized() gratuita, che evita di bruciare gas per
+una transazione destinata a fallire; se la view non risponde si procede
+comunque e sarà il contratto a rifiutare.
+Il selector di rientro 0x73c6ac6e è stato verificato con
+  cast sig "ERC721InvalidSender(address)"
+e riosservato dal vivo su anvil, non preso a memoria.
+
+
+F4. COSA MANCA PER ESEGUIRE DAVVERO
+--------------------------------------------------------------------------------
+Il wallet relayer 0x8458cF7ED1f5CeA1fe2cD1aa34E67A53a88Bf38e ha 0 AVAX su Fuji.
+Finché resta a zero non si può né deployare né mintare.
+
+  1. faucet Core:  https://core.app/tools/testnet-faucet/
+  2. export FUJI_PRIVATE_KEY=0x...
+     cd src/Ancorhash.Contracts
+     forge script script/DeployConfidentialRWA.s.sol --rpc-url fuji --broadcast
+  3. l'indirizzo stampato va in
+     Blockchain__Networks__43113__ContractAddress
+  4. serve anche il wallet Arkiv finanziato (hub.arkiv.network/faucet)
+
+Finché ContractAddress è vuoto il relayer NON emette token e ricade sulla
+transazione dati: funziona, ma non qualifica per il Track B.
+
+
+F5. ONESTÀ SU COSA QUESTO È E NON È
+--------------------------------------------------------------------------------
+- kycApproved è una whitelist gestita dall'owner. È una policy di eleggibilità
+  reale e applicata on-chain, non un KYC vero: nessuna verifica d'identità,
+  nessun attestatore terzo.
+- Il prezzo di settlement è una costante, non un book né un oracolo.
+- Il token è emesso al relayer, quindi resta vero quanto già scritto in
+  schema.md §6: "org" è DICHIARATO, non dimostrato dalla firma.
+- Nessun audit. È codice da hackathon, su testnet, con test che passano.
+
+
+F6. VERIFICA ESEGUITA
+--------------------------------------------------------------------------------
+  forge build            successo
+  forge test             14/14 PASS
+  anvil end-to-end       deploy + mint + duplicato + policy + DvP
+  cast sig / calldata    selector e encoding confermati
+  dotnet build           0 errori, 0 avvisi
+  frontend tsc           exit 0
+  out/ e cache/          gitignorati; OZ aggiunto come submodule
+
+
+F7. FILE TOCCATI
+--------------------------------------------------------------------------------
+NUOVO  src/Ancorhash.Contracts/{foundry.toml,remappings.txt,.gitignore,foundry.lock}
+NUOVO  src/Ancorhash.Contracts/src/ConfidentialRWA.sol
+NUOVO  src/Ancorhash.Contracts/test/ConfidentialRWA.t.sol
+NUOVO  src/Ancorhash.Contracts/script/DeployConfidentialRWA.s.sol
+NUOVO  submodule lib/openzeppelin-contracts @ v5.1.0
+NUOVO  src/Ancorhash.Infrastructure/Blockchain/Contracts/MintNotarizationFunction.cs
+NUOVO  src/Ancorhash.Core/Exceptions/DuplicateNotarizationException.cs
+MOD    NethereumBlockchainRelayer.cs, IBlockchainRelayer.cs,
+       NotarizationService.cs, NotarizeFunction.cs, BlockchainOptions.cs,
+       local.settings.json(.example)

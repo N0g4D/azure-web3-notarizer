@@ -91,7 +91,11 @@ public sealed partial class NotarizationService(
         // mettere nel payload dell'entità Arkiv (schema.md §3).
         var transactionHash = await blockchainRelayer
             .SendNotarizationAsync(
-                command.ChainId, command.WalletAddress, normalizedHash, cancellationToken)
+                command.ChainId,
+                command.WalletAddress,
+                normalizedHash,
+                command.SwarmReference,
+                cancellationToken)
             .ConfigureAwait(false);
 
         logger.LogInformation(

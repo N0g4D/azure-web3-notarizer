@@ -1,0 +1,11 @@
+{
+  "../../hacker-manual": {
+    "rev": "494d2c401de9efe4c8e97e5070c52d1786b94731"
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v5.1.0",
+      "rev": "69c8def5f222ff96f2b5beff05dfba996368aa79"
+    }
+  }
+}

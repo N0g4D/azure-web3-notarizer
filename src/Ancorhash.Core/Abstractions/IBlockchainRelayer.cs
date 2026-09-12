@@ -11,14 +11,20 @@ public interface IBlockchainRelayer
     /// <param name="chainId">Chain ID EIP-155 della rete EVM di destinazione.</param>
     /// <param name="walletAddress">Indirizzo Ethereum destinatario (già validato EIP-55).</param>
     /// <param name="documentHash">SHA-256 hex di 64 caratteri, lowercase, senza 0x.</param>
+    /// <param name="swarmAddress">
+    /// Indirizzo pubblico Swarm di 64 hex, senza 0x. È un impegno di 32 byte,
+    /// NON la reference completa: quella contiene la chiave di decifratura.
+    /// </param>
     /// <returns>Transaction hash (con prefisso 0x).</returns>
     /// <exception cref="Exceptions.UnsupportedChainException">Chain id non configurato.</exception>
     /// <exception cref="Exceptions.BlockchainUnavailableException">Nodo RPC non raggiungibile.</exception>
     /// <exception cref="Exceptions.BlockchainTransactionException">Broadcast rifiutato dopo i retry.</exception>
+    /// <exception cref="Exceptions.DuplicateNotarizationException">Documento già notarizzato.</exception>
     Task<string> SendNotarizationAsync(
         int chainId,
         string walletAddress,
         string documentHash,
+        string swarmAddress,
         CancellationToken cancellationToken = default);
 
     /// <summary>

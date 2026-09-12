@@ -5,7 +5,10 @@
         "  dal faucet Core: https://core.app/tools/testnet-faucet/",
         "Arkiv__PrivateKey: wallet che firma le entita' Arkiv, test GLM dal faucet",
         "  Arkiv: https://hub.arkiv.network/faucet",
-        "Nessuna mainnet configurata di proposito: Team1 richiede testnet-only."
+        "Nessuna mainnet configurata di proposito: Team1 richiede testnet-only.",
+        "Blockchain__Networks__43113__ContractAddress: indirizzo di ConfidentialRWA,",
+        "  stampato da: forge script script/DeployConfidentialRWA.s.sol --rpc-url fuji --broadcast",
+        "  Se vuoto, il relayer ricade sulla transazione dati e NON emette token RWA."
     ],
     "IsEncrypted": false,
     "Values": {
@@ -28,7 +31,8 @@
         "Arkiv__ScriptPath": "../Ancorhash.Infrastructure/ArkivWriter/src/write-entity.mjs",
         "Arkiv__TimeoutSeconds": "90",
         "Arkiv__RpcUrl": "",
-        "Arkiv__PrivateKey": ""
+        "Arkiv__PrivateKey": "",
+        "Blockchain__Networks__43113__ContractAddress": ""
     },
     "Host": {
         "CORS": "http://localhost:5173",
