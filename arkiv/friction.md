@@ -295,6 +295,161 @@ had we kept the first design.
 
 ---
 
+## F-10 · `prepare_feedback` is announced like a tool but lives in `prompts`
+
+**Severity:** medium — it cost us a retracted finding, and it will cost other
+teams a wasted call.
+
+The server's `initialize` instructions say:
+
+> "Use prepare_feedback to help draft feedback.md locally; optional
+> submit_feedback/report_outcome need sharingApproved:true …"
+
+That sentence names three capabilities in one breath. Two of them —
+`submit_feedback` and `report_outcome` — are tools, returned by `tools/list`.
+The third is **not**: `prepare_feedback` is an MCP *prompt*, returned only by
+`prompts/list`. Nothing in the wording distinguishes them.
+
+**What that does to an agent.** The natural reading is "these are three
+tools", so the client calls `tools/list`, finds 15 tools without
+`prepare_feedback`, and concludes the server advertises something it does not
+expose. Calling it directly confirms the wrong conclusion:
+
+```bash
+EP=https://arkiv-mcp-gateway.vercel.app/ethrome
+curl -s -X POST "$EP" -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"prepare_feedback","arguments":{}}}'
+# -> {"isError":true,"content":[{"type":"text",
+#     "text":"MCP request failed. Check the published schema; never send credentials."}]}
+```
+
+The error says "check the published schema", which points back at `tools/list`
+— the one place it will never be found.
+
+**We got this wrong ourselves, and that is the point.** An earlier revision of
+this report carried a finding claiming the server advertised a tool it did not
+expose. It was wrong, and we withdrew it. What made it wrong was calling
+`tools/list` and `tools/call` and never `prompts/list` — even though the
+`initialize` response declares `"prompts": {"listChanged": true}` in its
+capabilities. A team that trusts the instruction text and its own tool
+enumeration lands exactly where we did.
+
+**Reproduce:**
+
+```bash
+curl -s -X POST "$EP" … -d '{"…","method":"tools/list"}'   | grep -c prepare_feedback  # 0
+curl -s -X POST "$EP" … -d '{"…","method":"prompts/list"}' | grep -c prepare_feedback  # 1
+```
+
+**Suggestion:** name the surface in the sentence — "the `prepare_feedback`
+prompt" rather than bare `prepare_feedback` — or expose a thin tool of the same
+name that returns the prompt text. One word in the instructions removes the
+whole trap.
+
+**Observed:** 2026-09-12, MCP `arkiv-ethrome` v1.0.19, `configRevision`
+`2026-09-11.4`.
+
+---
+
+## F-11 · The bridge a TypeScript-only SDK forces has a failure mode a native SDK does not
+
+**Severity:** high for non-TypeScript backends — the write fails before any
+Arkiv code runs, and the result is indistinguishable from "no data".
+
+This is the downstream cost of F-07. With no .NET SDK, our C# backend reaches
+Arkiv by spawning the Node writer as a child process, with the script path in
+configuration. That boundary can fail in a way `client.createEntity()` never
+can — and it did.
+
+**What happened.** `Arkiv:ScriptPath` was relative
+(`../Ancorhash.Infrastructure/ArkivWriter/src/write-entity.mjs`). The Azure
+Functions host runs from its **build output** directory, not the project
+directory, so the path resolved to
+`src/Ancorhash.Api/bin/Ancorhash.Infrastructure/…`, which does not exist. Node
+was never launched at all.
+
+**Why it was silent, which is the interesting half.** Our own design hid it,
+and we would make the same choice again. The Arkiv write runs *after* the
+on-chain anchor, so by the time indexing fails the user has already paid gas
+and holds a valid on-chain proof. Failing the whole notarization there would
+be dishonest, so the service degrades: it logs, returns success with
+`arkiv_indexed: false`, and carries on. The frontend then did not surface that
+flag — so the UI showed the record as simply *not in the index*, which is
+**exactly** what a legitimately expired entity looks like.
+
+That is the dangerous part for a Mission 02 build. A failed write and a
+successful expiry rendered identically. During a demo, a broken pipeline is
+indistinguishable from the feature working.
+
+**Reproduce:** point `Arkiv:ScriptPath` at a non-existent file, notarize, and
+observe the record absent from the index with no error surfaced anywhere the
+user can see.
+
+**What we changed:**
+
+- path resolution tries the configured value against the assembly base
+  directory *and* the working directory, then walks up the tree, and on failure
+  lists **every** path it tried instead of naming one
+- the failure reason (`arkiv_error_code`, `arkiv_error`) is propagated all the
+  way to the HTTP response
+- the UI renders a distinct "indexing failed" state that says the entity was
+  never created and that this is **not** the Mission 02 case
+
+**Suggestion for Arkiv:** a first-party .NET client removes this class of bug
+entirely (F-07). Short of that, a page on driving Arkiv from a non-TypeScript
+backend would help — the operational hazard is not the Arkiv API, it is the
+process boundary teams are forced to build around it, and "no rows returned"
+is the worst possible symptom for a database whose headline feature is that
+rows disappear on their own.
+
+**Observed:** 2026-09-12, SDK 0.8.0, .NET 10 / Azure Functions isolated worker.
+
+---
+
+## F-12 · Two `check_submission` mission gates cannot be cleared
+
+**Severity:** medium — the same shape as F-08, in the tool teams reach for last.
+
+`check_submission` reports two `M02` findings that stay lit no matter what the
+document says. On our real `submission.md`:
+
+| Gate | Message asks for | Present in the file, verbatim |
+|---|---|---|
+| `M02` (blocker) | before/after evidence, same query, no delete call | a table of both sides with block heights, the query itself, and the sentence that no delete call was made |
+| `M02` (warning) | "state the demonstrated lifetime in blocks" | `**Demonstrated lifetime: 55 blocks**` |
+
+**Correction, because we got this wrong first.** An earlier draft of this entry
+also listed the `R2` "deployed dapp URL" gate as unsatisfiable. It is not. R2
+fired while the document still carried a placeholder, and **cleared the moment
+a real deployed URL replaced it**. We were testing against a minimal document
+and misread the cause. R2 works; only the two `M02` gates are stuck. We would
+rather correct ourselves here than leave a wrong claim in a report Arkiv is
+going to read.
+
+**Reproduce:** run `check_submission` over a document that contains a
+before/after block-height table for one query, an explicit "no delete call"
+statement, and the literal line `Demonstrated lifetime: 55 blocks`. Both `M02`
+findings still return.
+
+**Why it matters more than F-08.** This is the last tool a team runs before
+submitting, when time is shortest. A blocker that cannot be cleared at that
+moment either burns the remaining hour or teaches the team to ignore the
+checker — and an ignored checker cannot catch the real problem it exists for.
+
+**Caveat, stated plainly:** the tool labels itself `shallow_text_check` and says
+it "does not prove application quality or a judging outcome", so none of this
+affects eligibility. The gap is between what the messages ask for and what the
+matcher accepts.
+
+**What we did:** fixed every actionable finding — the mission was not declared
+in a recognised form, and the dapp URL was a placeholder — then stopped rather
+than contorting a document a human will read to satisfy a matcher.
+
+**Observed:** 2026-09-12, MCP `arkiv-ethrome` v1.0.19.
+
+---
+
 ## What worked well
 
 Recording this honestly, because the bounty asks for both.

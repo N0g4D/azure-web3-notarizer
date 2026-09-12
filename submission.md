@@ -8,8 +8,8 @@ an expiry the data enforces itself.
 - **Repo:** https://github.com/N0g4D/azure-web3-notarizer (public)
 - **Branch:** `ethrome-2026`
 - **Demo video:** *(to be added — max 3 minutes)*
-- **Deployed dapp:** *(URL to be added after deploy)* — a static read-only
-  build. Verification is fully live there: it queries the public Arkiv index
+- **Deployed dapp:** **https://ancorhash.vercel.app** — a static read-only
+  build. The registry is fully live there: it queries the public Arkiv index
   straight from the browser, with no backend, no account and no API key.
   Notarizing needs the Ancorhash relayer and is shown in the demo video.
 
