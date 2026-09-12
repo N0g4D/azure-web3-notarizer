@@ -5,7 +5,6 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![React](https://img.shields.io/badge/React-18.2-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
 [![Ethereum](https://img.shields.io/badge/Ethereum-3C3C3D?logo=ethereum&logoColor=white)](https://ethereum.org)
-[![Azure AI](https://img.shields.io/badge/Azure%20AI-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/ai-services/ai-document-intelligence)
 
 ---
 
@@ -51,8 +50,37 @@ data minimisation means not keeping records longer than necessary. In a normal
 database that is a retention policy: a cron job, a config value, a promise. A
 regulator cannot verify a promise, and a backup silently outlives it. Arkiv
 entities carry their own expiry: the record stops being returned by queries
-when its time is up, with no delete call and no job to trust. Retention stops
-being something we assert and becomes something the data does.
+when its time is up, with no delete call and no job to trust. Retention of
+**the public index** stops being something we assert and becomes something the
+data does.
+
+#### What expiry does and does not do
+
+That claim is narrow on purpose, and it is worth stating the limit plainly
+rather than letting someone find it.
+
+Expiry removes the entity from the public, queryable index. That is all it
+does. Specifically, it does **not**:
+
+- **delete the document.** The encrypted blob stays on Swarm for as long as its
+  postage batch is paid. Expiry touches Arkiv, not storage.
+- **revoke the decryption key.** Anyone already holding the 128-hex reference
+  can still fetch and decrypt the file afterwards. The reference is a bearer
+  credential; nothing on chain can claw it back.
+- **undo reads that already happened.** The index was public while it lived.
+  Anything copied out of it stays copied, and the anchor transaction on
+  Avalanche is immutable by design.
+
+So expiry is **data minimisation of the public index, not access control.**
+What it buys is real but bounded: the set of notarizations a third party can
+discover and correlate shrinks on a schedule the data carries itself, without
+anyone having to trust that we ran the cleanup job. What it does not buy is
+revocation.
+
+Revocation would need a different mechanism — Swarm's ACT grantee lists, or
+re-encrypting under a key the holder never had. That is out of scope here, and
+we would rather say so than let the expiry story imply a guarantee it cannot
+make.
 
 **The privacy split is what makes a public index safe.** The document is
 encrypted in the browser and stored on Swarm; the decryption key never leaves
@@ -96,7 +124,6 @@ The V2 architecture separates the local hashing and intelligence layer from the 
 graph LR
     USER["User"] -->|"Drags PDF"| BROWSER["<b>React Frontend</b><br/><i>Local Hashing</i>"]
     
-    BROWSER -.->|"Opt-in OCR"| AZURE["<b>Azure AI</b><br/><i>Extraction</i>"]
     BROWSER -->|"1. Check Costs"| API["<b>.NET 10 Backend</b><br/><i>Relayer Engine</i>"]
     BROWSER -->|"2. Fiat Checkout"| STRIPE["<b>Stripe</b><br/><i>Billing Mock</i>"]
     BROWSER -->|"3. POST /notarize"| API
@@ -107,7 +134,6 @@ graph LR
     style BROWSER fill:#20232a,stroke:#61dafb,color:#fff
     style API fill:#512bd4,stroke:#512bd4,color:#fff
     style ETH fill:#3C3C3D,stroke:#627EEA,color:#fff
-    style AZURE fill:#0078D4,stroke:#0078D4,color:#fff
     style STRIPE fill:#635bff,stroke:#635bff,color:#fff
 ~~~
 

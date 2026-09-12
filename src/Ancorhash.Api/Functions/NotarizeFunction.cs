@@ -61,7 +61,7 @@ public sealed class NotarizeFunction(
             DocumentHash: payload.DocumentHash ?? string.Empty,
             WalletAddress: payload.WalletAddress ?? string.Empty,
             ChainId: payload.ChainId ?? 0,
-            SwarmReference: payload.SwarmReference ?? string.Empty,
+            SwarmAddress: payload.SwarmAddress ?? string.Empty,
             ExpirationSeconds: payload.ExpirationSeconds ?? 0);
 
         try

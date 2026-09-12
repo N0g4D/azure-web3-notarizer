@@ -2,7 +2,6 @@ using Ancorhash.Core.Abstractions;
 using Ancorhash.Infrastructure.Arkiv;
 using Ancorhash.Infrastructure.Blockchain;
 using Ancorhash.Infrastructure.Configuration;
-using Ancorhash.Infrastructure.DocumentIntelligence;
 using Ancorhash.Infrastructure.Pricing;
 using Ancorhash.Infrastructure.Security;
 using Azure.Core;
@@ -42,11 +41,6 @@ public static class DependencyInjection
                 "Ogni network in Blockchain:Networks deve avere un RpcUrl assoluto valido.")
             .ValidateOnStart();
 
-        services.AddOptions<DocumentIntelligenceOptions>()
-            .Bind(configuration.GetSection(DocumentIntelligenceOptions.SectionName))
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-
         services.AddOptions<TurnstileOptions>()
             .Bind(configuration.GetSection(TurnstileOptions.SectionName))
             .ValidateDataAnnotations()
@@ -81,7 +75,6 @@ public static class DependencyInjection
         services.AddSingleton<IWeb3Factory, NethereumWeb3Factory>();
         services.AddSingleton<IWalletAddressValidator, NethereumWalletAddressValidator>();
         services.AddSingleton<IBlockchainRelayer, NethereumBlockchainRelayer>();
-        services.AddSingleton<IDocumentExtractionService, AzureDocumentExtractionService>();
         return services;
     }
 }

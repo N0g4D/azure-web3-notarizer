@@ -9,7 +9,7 @@ namespace Ancorhash.Core.Models;
 /// <param name="DocumentHash">SHA-256 hex di 64 caratteri, senza prefisso 0x.</param>
 /// <param name="WalletAddress">Indirizzo Ethereum destinatario (EIP-55).</param>
 /// <param name="ChainId">Chain ID EIP-155 della rete EVM di destinazione (es. 137, 80002, 11155111).</param>
-/// <param name="SwarmReference">
+/// <param name="SwarmAddress">
 /// Indirizzo pubblico Swarm del documento cifrato: 64 hex, SENZA la chiave di
 /// decifratura. La reference completa (128 hex) non deve mai arrivare qui.
 /// </param>
@@ -19,5 +19,5 @@ public sealed record NotarizationCommand(
     string DocumentHash,
     string WalletAddress,
     int ChainId,
-    string SwarmReference,
+    string SwarmAddress,
     int ExpirationSeconds);

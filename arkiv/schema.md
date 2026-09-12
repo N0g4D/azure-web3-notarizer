@@ -305,6 +305,12 @@ So a renewal is "recompute the full new lifetime", not "add 30 days".
 4. **No delete call, ever.** Expiry is the only mechanism. Mission 02 is proved
    by the same query before and after the boundary, with Delete (tag 5) never
    invoked.
+5. **Expiry is not revocation.** It removes the entity from the public index.
+   It does **not** delete the encrypted blob on Swarm, does **not** revoke the
+   decryption key — anyone holding the 128-hex reference can still decrypt —
+   and does **not** undo reads already made. The value is data minimisation of
+   the public index, not access control. Stated in full in
+   [README, "What expiry does and does not do"](../README.md#what-expiry-does-and-does-not-do).
 
 ---
 

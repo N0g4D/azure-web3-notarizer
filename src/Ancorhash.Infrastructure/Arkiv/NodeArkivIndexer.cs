@@ -67,7 +67,7 @@ public sealed class NodeArkivIndexer(
                 DocumentId = command.DocumentId,
                 DocumentHash = command.DocumentHash,
                 // Solo l'indirizzo pubblico: 64 hex, chiave esclusa.
-                SwarmAddress = command.SwarmReference,
+                SwarmAddress = command.SwarmAddress,
                 ExpirationSeconds = command.ExpirationSeconds,
                 ChainId = command.ChainId,
                 TxHash = anchorTransactionHash,

@@ -9,11 +9,12 @@ export interface NotarizeRequest {
   /** Impronta SHA-256 del documento in chiaro: l'ancora di integrità. */
   document_hash: string
   /**
-   * Reference Swarm del documento cifrato. Va inviato l'indirizzo pubblico
-   * (64 hex) e mai la reference completa di 128 hex, che include la chiave
-   * di decifratura: vedi `toPublicAddress` in lib/swarm.ts.
+   * INDIRIZZO pubblico Swarm del documento cifrato: 64 hex.
+   * Non è la reference completa di 128 hex, che include la chiave di
+   * decifratura: vedi `toPublicAddress` in lib/swarm.ts. Il nome dice
+   * "address" proprio per non invitare l'errore.
    */
-  swarm_reference: string
+  swarm_address: string
   /**
    * Durata di validità del record, in secondi. L'unità è esplicita nel nome
    * perché la Fase 2 la traduce in una scadenza Arkiv, dove sbagliare unità

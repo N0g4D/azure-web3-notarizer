@@ -12,9 +12,9 @@
  * blockchain (Fasi 2 e 3) va il solo indirizzo, via `toPublicAddress`.
  */
 import { SwarmIdClient } from '@snaha/swarm-id'
-import type { ConnectionInfo } from '@snaha/swarm-id'
+import type { ConnectionInfo, PostageBatch } from '@snaha/swarm-id'
 
-export type { ConnectionInfo }
+export type { ConnectionInfo, PostageBatch }
 
 /** Origin dell'iframe di identità Swarm ID (override per self-hosting). */
 const SWARM_ID_ORIGIN =
@@ -59,20 +59,85 @@ export function createSwarmClient(
 }
 
 /**
- * Perché l'utente non può caricare, in italiano. Un'identità connessa non
- * basta: senza postage stamp e senza gateway sovvenzionato `canUpload` è
- * false, ed è il caso più frequente prima di riscattare un gift code.
+ * Stato del postage stamp effettivamente associato all'identità connessa.
+ * `checked: false` significa che non lo sappiamo ancora, non che manchi.
  */
-export function uploadUnavailableReason(info: ConnectionInfo): string | null {
+export interface StampStatus {
+  checked: boolean
+  batch?: PostageBatch
+  error?: string
+}
+
+export const UNKNOWN_STAMP: StampStatus = { checked: false }
+
+/**
+ * Interroga il postage stamp dell'identità connessa.
+ *
+ * Esiste perché `canUpload` non è affidabile: lo abbiamo visto restare true
+ * con un'identità senza stamp utilizzabile, e il fallimento è arrivato 30
+ * secondi dopo come timeout opaco (swarm/friction.md S-02). `PostageBatch`
+ * porta `exists` e `usable`, che sono la verità.
+ */
+export async function fetchStampStatus(
+  client: SwarmIdClient,
+): Promise<StampStatus> {
+  try {
+    const batch = await client.getPostageBatch()
+    return { checked: true, batch }
+  } catch (error) {
+    return {
+      checked: true,
+      error:
+        error instanceof Error
+          ? `Stato del postage stamp non leggibile: ${error.message}`
+          : 'Stato del postage stamp non leggibile.',
+    }
+  }
+}
+
+/**
+ * Perché l'utente non può caricare, in italiano. Null solo quando lo storage
+ * è davvero utilizzabile.
+ *
+ * NON ci si fida del solo `canUpload`: serve anche un batch che esista e sia
+ * usable. Meglio un "non disponibile" prudente che un "Pronto" che mente e
+ * fa scoprire il problema 30 secondi dopo, a upload iniziato.
+ */
+export function uploadUnavailableReason(
+  info: ConnectionInfo,
+  stamp: StampStatus = UNKNOWN_STAMP,
+): string | null {
   if (!info.identity) return 'Connetti Swarm ID per cifrare il documento.'
-  if (info.canUpload) return null
-  if (info.uploadUnavailableReason === 'no-stamp') {
-    return 'Nessun postage stamp sul tuo account Swarm: riscatta un gift code per caricare.'
+
+  if (!info.canUpload) {
+    if (info.uploadUnavailableReason === 'no-stamp') {
+      return 'Nessun postage stamp sul tuo account Swarm: riscatta un gift code per caricare.'
+    }
+    if (info.uploadUnavailableReason === 'stamper-failed') {
+      return 'Firma del postage stamp fallita: riprova tra qualche istante.'
+    }
+    return 'Upload su Swarm non disponibile con questo account.'
   }
-  if (info.uploadUnavailableReason === 'stamper-failed') {
-    return 'Firma del postage stamp fallita: riprova tra qualche istante.'
+
+  // Da qui in poi canUpload è true, ma non basta.
+  if (!stamp.checked) return 'Verifica del postage stamp in corso…'
+  if (stamp.error) return stamp.error
+  if (!stamp.batch || !stamp.batch.exists) {
+    return 'Swarm ID si dichiara pronto ma non risulta alcun postage stamp: senza stamp l\'upload andrebbe in timeout.'
   }
-  return 'Upload su Swarm non disponibile con questo account.'
+  if (!stamp.batch.usable) {
+    return 'Il postage stamp esiste ma non è ancora utilizzabile: attendi qualche blocco dopo il riscatto.'
+  }
+  return null
+}
+
+/** Riassunto leggibile del batch per il pannello. */
+export function describeStamp(batch: PostageBatch): string {
+  const ttl =
+    batch.batchTTL !== undefined && batch.batchTTL > 0
+      ? `, scade tra ~${Math.round(batch.batchTTL / 86_400)} g`
+      : ''
+  return `depth ${batch.depth}, utilizzo ${batch.utilization}%${ttl}`
 }
 
 /**
@@ -83,9 +148,13 @@ export function uploadUnavailableReason(info: ConnectionInfo): string | null {
 export async function uploadEncrypted(
   client: SwarmIdClient,
   file: File,
+  stamp: StampStatus,
   onProgress?: (percent: number) => void,
 ): Promise<string> {
-  const blocked = uploadUnavailableReason(client.connectionInfo)
+  // Lo stamp verificato è un parametro obbligatorio: con il default
+  // UNKNOWN_STAMP questa guardia bloccherebbe sempre, ed è voluto. Nessun
+  // upload parte senza che qualcuno abbia davvero guardato il batch.
+  const blocked = uploadUnavailableReason(client.connectionInfo, stamp)
   if (blocked !== null) throw new SwarmError(blocked)
 
   const bytes = new Uint8Array(await file.arrayBuffer())

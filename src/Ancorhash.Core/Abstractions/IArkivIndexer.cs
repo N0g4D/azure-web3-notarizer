@@ -11,7 +11,7 @@ public interface IArkivIndexer
 {
     /// <summary>
     /// Crea l'entità con la scadenza richiesta.
-    /// ATTENZIONE: <paramref name="command"/>.SwarmReference deve essere il solo
+    /// ATTENZIONE: <paramref name="command"/>.SwarmAddress deve essere il solo
     /// indirizzo pubblico (64 hex). Le entità Arkiv sono pubbliche: nessun
     /// segreto, nessun dato personale, nessuna chiave di decifratura.
     /// </summary>

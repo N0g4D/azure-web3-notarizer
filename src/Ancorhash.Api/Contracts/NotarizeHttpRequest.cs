@@ -35,8 +35,8 @@ public sealed record NotarizeHttpRequest
     /// DECIFRATURA. La chiave non lascia mai il browser: il frontend invia
     /// solo toPublicAddress(). Un valore di 128 hex qui viene rifiutato.
     /// </summary>
-    [JsonPropertyName("swarm_reference")]
-    public string? SwarmReference { get; init; }
+    [JsonPropertyName("swarm_address")]
+    public string? SwarmAddress { get; init; }
 
     /// <summary>
     /// Durata di validità del record in secondi. Unità esplicita nel nome:

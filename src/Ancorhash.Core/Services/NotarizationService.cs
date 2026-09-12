@@ -51,7 +51,7 @@ public sealed partial class NotarizationService(
         // il frontend ha smesso di chiamare toPublicAddress() e sta per
         // pubblicare la chiave. Meglio un 400 rumoroso che un documento
         // decifrabile da chiunque su un indice pubblico e permanente.
-        if (Hex128Regex().IsMatch(command.SwarmReference))
+        if (Hex128Regex().IsMatch(command.SwarmAddress))
         {
             logger.LogError(
                 "Notarize BLOCCATA per documento {DocumentId}: ricevuta una reference Swarm "
@@ -59,15 +59,15 @@ public sealed partial class NotarizationService(
                 + "solo l'indirizzo pubblico di 64 hex.",
                 command.DocumentId);
             throw new NotarizationValidationException(
-                "swarm_reference contiene 128 caratteri: è la reference completa e include "
+                "swarm_address contiene 128 caratteri: è la reference completa e include "
                 + "la chiave di decifratura. Inviare solo l'indirizzo pubblico di 64 hex.");
         }
 
-        if (string.IsNullOrWhiteSpace(command.SwarmReference)
-            || !Hex64Regex().IsMatch(command.SwarmReference))
+        if (string.IsNullOrWhiteSpace(command.SwarmAddress)
+            || !Hex64Regex().IsMatch(command.SwarmAddress))
         {
             throw new NotarizationValidationException(
-                "swarm_reference deve essere l'indirizzo pubblico Swarm: 64 caratteri hex, "
+                "swarm_address deve essere l'indirizzo pubblico Swarm: 64 caratteri hex, "
                 + "senza prefisso 0x.");
         }
 
@@ -94,7 +94,7 @@ public sealed partial class NotarizationService(
                 command.ChainId,
                 command.WalletAddress,
                 normalizedHash,
-                command.SwarmReference,
+                command.SwarmAddress,
                 cancellationToken)
             .ConfigureAwait(false);
 

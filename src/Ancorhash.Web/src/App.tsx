@@ -9,12 +9,15 @@ import type { Chain, NotarizeResponse } from './lib/api'
 import { sha256Hex } from './lib/hash'
 import {
   SwarmError,
+  UNKNOWN_STAMP,
   createSwarmClient,
+  describeStamp,
+  fetchStampStatus,
   toPublicAddress,
   uploadEncrypted,
   uploadUnavailableReason,
 } from './lib/swarm'
-import type { ConnectionInfo } from './lib/swarm'
+import type { ConnectionInfo, StampStatus } from './lib/swarm'
 
 /** Sitekey pubblica Cloudflare Turnstile (dal bundle Vite). */
 const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY as
@@ -137,6 +140,8 @@ function App() {
   const [swarmInfo, setSwarmInfo] = useState<ConnectionInfo | null>(null)
   const [swarmInitError, setSwarmInitError] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
+  // canUpload non basta: lo stamp va guardato davvero (swarm/friction.md S-02).
+  const [stamp, setStamp] = useState<StampStatus>(UNKNOWN_STAMP)
 
   // Il client monta un iframe nascosto e non è riutilizzabile dopo destroy():
   // va quindi creato dentro l'effect, così lo StrictMode ne ricrea uno nuovo.
@@ -182,9 +187,26 @@ function App() {
     }
   }, [isConnecting, swarmClient])
 
-  // Un'identità connessa non basta: senza postage stamp canUpload resta false.
+  // Ogni volta che la connessione cambia, si rilegge il batch: un gift code
+  // riscattato a metà sessione deve sbloccare la UI senza ricaricare.
+  useEffect(() => {
+    if (!swarmClient || !swarmInfo?.identity) {
+      setStamp(UNKNOWN_STAMP)
+      return
+    }
+    let isActive = true
+    setStamp(UNKNOWN_STAMP)
+    void fetchStampStatus(swarmClient).then((next) => {
+      if (isActive) setStamp(next)
+    })
+    return () => {
+      isActive = false
+    }
+  }, [swarmClient, swarmInfo?.identity?.id, swarmInfo?.canUpload])
+
+  // "Pronto" solo con un batch che esiste ED è usable.
   const swarmBlocker = swarmInfo
-    ? uploadUnavailableReason(swarmInfo)
+    ? uploadUnavailableReason(swarmInfo, stamp)
     : 'Inizializzazione di Swarm ID…'
   const canUploadToSwarm = swarmBlocker === null
 
@@ -293,6 +315,7 @@ function App() {
         const swarmReference = await uploadEncrypted(
           swarmClient,
           file,
+          stamp,
           (progress) =>
             setPhase((current) =>
               current.kind === 'analyzing' ? { ...current, progress } : current,
@@ -317,7 +340,7 @@ function App() {
         })
       }
     },
-    [swarmClient, swarmInitError],
+    [stamp, swarmClient, swarmInitError],
   )
 
   const retryUpload = useCallback(() => {
@@ -341,7 +364,7 @@ function App() {
         document_id: fileName,
         document_hash: hash,
         // Solo l'indirizzo: la chiave di decifratura non lascia il browser.
-        swarm_reference: toPublicAddress(swarmReference),
+        swarm_address: toPublicAddress(swarmReference),
         expiration_seconds: expirationSeconds,
         wallet_address: MOCK_WALLET_ADDRESS,
         chain_id: selectedChainId,
@@ -453,19 +476,50 @@ function App() {
                 </div>
 
                 {swarmInfo?.identity ? (
-                  <p className="mt-3 text-xs text-neutral-500">
-                    Connesso come{' '}
-                    <span className="font-medium text-neutral-900">
-                      {swarmInfo.identity.name}
-                    </span>
-                    <span className="ml-2 break-all font-mono">
-                      {swarmInfo.identity.address}
-                    </span>
-                  </p>
+                  <dl className="mt-3 space-y-1.5 text-xs">
+                    <div className="flex gap-2">
+                      <dt className="w-28 shrink-0 text-neutral-500">Identità</dt>
+                      <dd className="font-medium text-neutral-900">
+                        {swarmInfo.identity.name}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-28 shrink-0 text-neutral-500">Indirizzo</dt>
+                      <dd className="break-all font-mono text-neutral-700">
+                        {swarmInfo.identity.address}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-28 shrink-0 text-neutral-500">
+                        Postage stamp
+                      </dt>
+                      <dd className="text-neutral-700">
+                        {!stamp.checked ? (
+                          <span className="text-neutral-400">verifica in corso…</span>
+                        ) : stamp.error ? (
+                          <span className="text-neutral-500">{stamp.error}</span>
+                        ) : stamp.batch ? (
+                          <>
+                            <span className="break-all font-mono">
+                              {stamp.batch.batchID.slice(0, 16)}…
+                            </span>
+                            <span className="ml-2">
+                              {stamp.batch.usable ? 'utilizzabile' : 'NON utilizzabile'}
+                            </span>
+                            <span className="block text-neutral-400">
+                              {describeStamp(stamp.batch)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-neutral-500">nessuno</span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
                 ) : (
                   <p className="mt-3 text-xs text-neutral-500">
-                    Accedi con una passkey o un account Ethereum. Nessun nodo
-                    Bee da installare.
+                    Accedi a Swarm ID con la tua seed phrase. Nessun nodo Bee da
+                    installare.
                   </p>
                 )}
 
