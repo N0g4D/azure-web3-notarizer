@@ -32,7 +32,7 @@
         "Arkiv__TimeoutSeconds": "90",
         "Arkiv__RpcUrl": "",
         "Arkiv__PrivateKey": "",
-        "Blockchain__Networks__43113__ContractAddress": ""
+        "Blockchain__Networks__43113__ContractAddress": "0x1774961c3E68c54828b422bdDb2735D77D7429D8"
     },
     "Host": {
         "CORS": "http://localhost:5173",

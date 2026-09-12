@@ -1421,3 +1421,123 @@ G10. PROSSIMO PASSO
    RIMISURANDO la cadenza pochi minuti prima.
 3. Deploy di ConfidentialRWA su Fuji e ContractAddress in configurazione
    (vedi F4): senza, il relayer non emette token e il Track B non qualifica.
+
+
+================================================================================
+APPENDICE H · CHIUSURA SUBMISSION — FRICTION, DAPP LIVE, TRACK B COMPLETATO
+Data: 2026-09-12
+================================================================================
+
+H1. FRICTION ARKIV: 9 -> 12 VOCI
+--------------------------------------------------------------------------------
+F-10  prepare_feedback e' annunciato come fosse un tool ma vive nei prompts.
+      Le istruzioni di initialize lo nominano nella stessa frase di
+      submit_feedback e report_outcome, che invece SONO tool. Un agente
+      enumera tools/list, non lo trova, e conclude che il server annuncia
+      qualcosa che non espone. tools/call risponde "check the published
+      schema", che rimanda proprio all'unico posto dove non sara' mai.
+      E' esattamente l'errore che ci era costato la ritrattazione di F-01.
+
+F-11  Il ponte imposto da un SDK solo-TypeScript ha un modo di fallire che
+      client.createEntity() non puo' avere. ScriptPath relativo risolto
+      contro la cartella di build della Functions host: Node non e' mai
+      partito. E poiche' l'indicizzazione gira DOPO l'ancora gia' pagata, il
+      servizio degrada per scelta invece di far fallire una notarizzazione
+      valida -> la UI mostrava il record assente, IDENTICO a un'entita'
+      scaduta. Per un progetto Mission 02 e' il sintomo peggiore possibile.
+
+F-12  Due gate M02 di check_submission restano accesi anche con il documento
+      che contiene alla lettera cio' che chiedono.
+      AUTOCORREZIONE INCLUSA: una prima stesura sosteneva che anche il gate
+      R2 (URL della dapp) fosse insoddisfabile. ERA FALSO: R2 si e' liberato
+      nel momento in cui un URL reale ha sostituito il placeholder. Corretto
+      dentro la voce stessa, invece di lasciare un'affermazione sbagliata in
+      un report che Arkiv leggera'.
+
+
+H2. DAPP PUBBLICA — VERIFICATA, NON ASSUNTA
+--------------------------------------------------------------------------------
+https://ancorhash.vercel.app  ->  HTTP 200
+Inserito in submission.md; questo ha anche fatto passare il gate R2.
+
+DIFETTO TROVATO E CORRETTO: index.html era ancora ITALIANO.
+  <html lang="it">  e  <title>Ancorhash — Notarizzazione Blockchain</title>
+La traduzione precedente aveva grepato src/, e index.html sta nella root del
+progetto. Risultato: la scheda del browser — la PRIMA cosa che un giudice
+vede — era l'unica cosa rimasta non tradotta. Ora lang="en", titolo
+"Confidential RWA Vault" e una meta description in inglese.
+
+ATTENZIONE: il bundle deployato (index-Rv6C8DVi.js) e' PRECEDENTE alla
+ristrutturazione del registro e a questa correzione. Serve un redeploy:
+  cd src/Ancorhash.Web && vercel --prod
+
+
+H3. TRACK B — DA "DEPLOYATO" A "DIMOSTRATO END-TO-END"
+--------------------------------------------------------------------------------
+Eseguito il redeploy richiesto, con il re-mint necessario perche' un
+contratto nuovo sarebbe rimasto senza token.
+
+  contratto  0x1774961c3E68c54828b422bdDb2735D77D7429D8   5686 byte
+  deploy tx  0x2d8744b11ac73b731398af61fbf1edbfe32e0cdab6513c176a4669391d10e39c
+  mint tx    0xa3e32d24118dcb06b7adc40baf858138d18f156e07fe41cff22bb2b6ffa8db03
+  KYC tx     0xde8122c45a5afcc308b885f7c62699d7ebe58a1e825a284684e7fb176df78bc8
+  settle tx  0x3bd8496ba6d1b9e5630cabde70e4a896c6d8a25055971364a4b9c7bb9581eacb
+
+SETTLEMENT REALE, misurato:
+  token   venditore 0x8458cF7E…f38e  ->  compratore 0x37a48220…D9A7
+  venditore  1.968057 -> 1.978057 AVAX   (+0.010000 esatti)
+  compratore 0.030000 -> 0.019921 AVAX   (prezzo + gas)
+Consegna e pagamento nella stessa transazione: non possono separarsi.
+
+SCELTA DI PROGETTO: il settlement e' stato fatto su un SECONDO documento,
+cosi' il token riproducibile — sha256("Ancorhash ETHRome 2026 demo invoice")
+= 91b4e781… — resta al venditore ed e' ancora disponibile per eseguire il
+flusso dal vivo davanti alla camera. Verificato: ownerOf lo conferma ancora
+al relayer.
+
+BONUS DI COERENZA: il token id ora e' lo STESSO digest che indicizza il
+record su Arkiv ed e' citato in submission.md come riproducibile. Un giudice
+ricalcola lo sha256 di una stringa pubblicata e ritrova lo stesso valore su
+Swarm (impegno), su Arkiv (indice) e su Fuji (token).
+
+
+H4. SCRIPT DEMO — DUE BUG CHE AVREBBERO ROTTO LA REGISTRAZIONE
+--------------------------------------------------------------------------------
+scripts/demo-settlement.sh esegue le due transazioni del Track B stampando
+proprieta' e saldi ai due lati di ogni passo. Precondizioni verificate contro
+la catena PRIMA di spendere: contratto esistente, token esistente, venditore
+proprietario, compratore diverso dal venditore e finanziato.
+
+BUG 1 — ${VAR,,} e' bash 4. macOS spedisce bash 3.2 e risponde
+        "bad substitution". Lo script si sarebbe rotto IN DIRETTA.
+        Sostituito con una funzione lc() basata su tr.
+
+BUG 2 — la riga che stampa quanto ha incassato il venditore usava una
+        f-string con apici annidati: Python 3.9 (quello di macOS) la
+        rifiuta. E' proprio la riga che mostra il pagamento, il momento
+        chiave della demo: stampava vuoto. Ora i valori passano via argv.
+
+Entrambi trovati eseguendo davvero lo script, non leggendolo.
+
+
+H5. COSA MANCA DAVVERO, IN ORDINE
+--------------------------------------------------------------------------------
+1. REDEPLOY VERCEL — obbligatorio. Il sito live serve ancora il bundle
+   precedente: senza redeploy il giudice vede la vecchia UI e il titolo
+   italiano.        cd src/Ancorhash.Web && vercel --prod
+
+2. VIDEO DEMO max 3 minuti. Traccia suggerita:
+   - registro pubblico su Vercel, filtri per organizzazione
+   - Mission 02: preset 110 s, polling, transizione al blocco di scadenza
+   - Track B: ./scripts/demo-settlement.sh sul token 91b4e781…
+   Rimisurare la cadenza dei blocchi Tiramisu POCO PRIMA di registrare.
+
+3. FORM: ETHRome (Google Form) + il form separato di Team1.
+
+4. Il wallet compratore della demo e' usa-e-getta e la sua chiave NON e'
+   stata salvata nel repo. Per rieseguire il settlement serve generarne uno
+   nuovo e finanziarlo (~0.02 AVAX).
+
+5. Resta vero quanto gia' dichiarato: org e' DICHIARATO non dimostrato, un
+   solo wallet firma sia le entita' Arkiv sia l'ancora Fuji, e kycApproved
+   e' una whitelist gestita dall'owner, non una verifica d'identita'.

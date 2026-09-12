@@ -22,11 +22,13 @@
 set -euo pipefail
 
 RPC_URL="${RPC_URL:-https://api.avax-test.network/ext/bc/C/rpc}"
-CONTRACT="${CONTRACT:-0x01fBCFCb50638c90c8d48D1c8b6b109D7598BAB2}"
+CONTRACT="${CONTRACT:-0x1774961c3E68c54828b422bdDb2735D77D7429D8}"
 
 # tokenId == uint256(documentHash): the asset rule, so the token id IS the
-# document's SHA-256. This default is the document minted on Fuji.
-TOKEN_ID="${TOKEN_ID:-0xbbbbe8f833a3c54f04849cfabc8aea69b5ff0441ea4265f8dd081e9f39489368}"
+# document's SHA-256. This default is the demo invoice minted on Fuji, and it
+# is reproducible — the same digest indexes the record on Arkiv:
+#   printf '%s' 'Ancorhash ETHRome 2026 demo invoice' | shasum -a 256
+TOKEN_ID="${TOKEN_ID:-0x91b4e781b2cbed53941e491a79de0b5981ba82de1a1b27b61fb5d5b02351a7bb}"
 
 PRICE_ETHER="${PRICE_ETHER:-0.01ether}"
 
@@ -46,7 +48,10 @@ BUYER=$(cast wallet address  --private-key "$BUYER_PRIVATE_KEY")
 
 call()  { cast call "$CONTRACT" "$@" --rpc-url "$RPC_URL"; }
 bal()   { cast balance "$1" --rpc-url "$RPC_URL"; }
-avax()  { python3 -c "print(f'{int($1)/1e18:.6f}')"; }
+# Values arrive as bare wei integers from cast. Passed via argv rather than
+# interpolated into the Python literal: macOS ships Python 3.9, which rejects
+# nested quotes inside an f-string, and this script runs live on camera.
+avax()  { python3 -c 'import sys;print("%.6f" % (int(sys.argv[1])/1e18))' "$1"; }
 
 bold "== Ancorhash — Track B settlement on Avalanche Fuji =="
 dim  "contract $CONTRACT"
@@ -112,7 +117,8 @@ SELLER_AFTER=$(bal "$SELLER")
 bold "-- after --"
 echo "  token owner    : $(call "ownerOf(uint256)(address)" "$TOKEN_ID")"
 echo "                   (expected the buyer: $BUYER)"
-echo "  seller received: $(python3 -c "print(f'{(int('$SELLER_AFTER')-int('$SELLER_BEFORE'))/1e18:+.6f}')") AVAX"
+DELTA=$(python3 -c 'import sys;print("%+.6f" % ((int(sys.argv[1])-int(sys.argv[2]))/1e18))' "$SELLER_AFTER" "$SELLER_BEFORE")
+echo "  seller received: $DELTA AVAX  (the contract's fixed price, paid atomically)"
 echo "  buyer balance  : $(avax "$(bal "$BUYER")") AVAX"
 echo
 dim "Asset rule, transfer policy and settlement — all three exercised on Fuji."

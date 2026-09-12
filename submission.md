@@ -146,32 +146,53 @@ why `notarized_at` must be `u64` for date-window queries to exist at all.
 
 | Requirement | Status |
 |---|---|
-| Fuji deployment | **yes** — `0x01fBCFCb50638c90c8d48D1c8b6b109D7598BAB2` |
-| A transaction | **yes** — mint, status 1, gas 116 118 |
-| Asset rule | **deployed and exercised on Fuji** |
-| Eligibility / transfer policy | **deployed**, readable on-chain; exercised in tests and on a local chain, **not yet on Fuji** |
-| Settlement logic | **deployed**, readable on-chain; exercised in tests and on a local chain, **not yet on Fuji** |
+| Fuji deployment | **yes** — `0x1774961c3E68c54828b422bdDb2735D77D7429D8` |
+| Transactions | **yes** — deploy, mint, KYC approval and settlement, all status 1 |
+| Asset rule | **exercised on Fuji** |
+| Eligibility / transfer policy | **exercised on Fuji** |
+| Settlement logic | **exercised on Fuji** — token and funds moved atomically |
 
 **Asset rule.** `tokenId == uint256(documentHash)`, so a document can be
 notarized exactly once — uniqueness is a property of the type, not a check that
-can be forgotten. A second mint reverts inside `_mint`. Verified on Fuji:
-`ownerOf` returns the relayer, `swarmAddressOf` returns the stored commitment,
-`notarizedAtBlock` returns 58 332 070.
+can be forgotten. A second mint reverts inside `_mint`. Verified on Fuji: `ownerOf` returns the
+relayer, `swarmAddressOf` returns the stored commitment, and `isNotarized`
+returns true for the demo digest. The token id is
+`uint256(sha256("Ancorhash ETHRome 2026 demo invoice"))`, so a judge can
+recompute it and look the token up without trusting us.
 
 **Transfer policy.** `kycApproved` is enforced in `_update`, the single point
 every movement passes through in OZ v5, so `transferFrom`, `safeTransferFrom`
-and settlement are all covered with no bypass. Readable on Fuji:
-`kycApproved(relayer) == true`.
+and settlement are all covered with no bypass. Exercised on Fuji:
+[`setKycApproval(buyer, true)`](https://testnet.snowtrace.io/tx/0xde8122c45a5afcc308b885f7c62699d7ebe58a1e825a284684e7fb176df78bc8)
+flipped the buyer from `false` to `true`, and only then could the token
+move.
 
 **Settlement.** `settlePurchase()` is atomic delivery-versus-payment at
 `SETTLEMENT_PRICE` (0.01 AVAX, readable on Fuji as `1e16`), with
 checks-effects-interactions plus `nonReentrant`. A test proves a seller that
 rejects funds reverts the whole thing rather than losing the token.
 
-**The limit, stated rather than hidden:** the mint is proven on Fuji; the KYC
-transfer and the settlement are proven by 14 passing Foundry tests and a full
-local-chain run, but have not yet been executed **on Fuji**. Two transactions
-would close that gap.
+**Executed on Fuji**, in
+[one transaction](https://testnet.snowtrace.io/tx/0x3bd8496ba6d1b9e5630cabde70e4a896c6d8a25055971364a4b9c7bb9581eacb) called by the buyer:
+
+| | Before | After |
+|---|---|---|
+| Token owner | seller `0x8458cF7E…f38e` | buyer `0x37a48220…D9A7` |
+| Seller balance | 1.968057 AVAX | 1.978057 AVAX (**+0.010000**) |
+| Buyer balance | 0.030000 AVAX | 0.019921 AVAX (price + gas) |
+
+The seller received exactly `SETTLEMENT_PRICE`, and the token changed hands in
+the same transaction. Delivery and payment cannot come apart.
+
+All three requirements are now executed on Fuji, not only deployed. The
+settlement used a second token ([mint](https://testnet.snowtrace.io/tx/0x8e9ea23dbb5bf91b0390e8d3e0f3579f9f95dee633a016fd8f493c335c325513))
+so the reproducible demo document stays with the seller and the flow can be
+run again live on camera — `scripts/demo-settlement.sh` is that run, and it
+prints ownership and balances either side of each step.
+
+**What is still a limitation:** `kycApproved` is an owner-managed whitelist,
+not identity verification, and the price is a constant rather than a book or
+oracle. Both are noted under Known limitations below.
 
 ### ENS — not claimed
 
@@ -185,8 +206,12 @@ No ENSv2 integration. Claiming it would be false.
 
 | | |
 |---|---|
-| `ConfidentialRWA` | [`0x01fBCFCb50638c90c8d48D1c8b6b109D7598BAB2`](https://testnet.snowtrace.io/address/0x01fBCFCb50638c90c8d48D1c8b6b109D7598BAB2) |
-| Mint transaction | [`0x039f85a4…3963e`](https://testnet.snowtrace.io/tx/0x039f85a41057619ba274a8212d50b95accd50c2187e48dcceff82e5ec0b3963e) |
+| `ConfidentialRWA` | [`0x1774961c3E68c54828b422bdDb2735D77D7429D8`](https://testnet.snowtrace.io/address/0x1774961c3E68c54828b422bdDb2735D77D7429D8) |
+| Deploy transaction | [`0x2d8744b1…0e39c`](https://testnet.snowtrace.io/tx/0x2d8744b11ac73b731398af61fbf1edbfe32e0cdab6513c176a4669391d10e39c) |
+| Mint transaction | [`0xa3e32d24…8db03`](https://testnet.snowtrace.io/tx/0xa3e32d24118dcb06b7adc40baf858138d18f156e07fe41cff22bb2b6ffa8db03) |
+| Token id | `0x91b4e781b2cbed53941e491a79de0b5981ba82de1a1b27b61fb5d5b02351a7bb` — the same digest that indexes the record on Arkiv |
+| KYC approval tx | [`0xde8122c4…78bc8`](https://testnet.snowtrace.io/tx/0xde8122c45a5afcc308b885f7c62699d7ebe58a1e825a284684e7fb176df78bc8) |
+| Settlement tx (DvP) | [`0x3bd8496b…1eacb`](https://testnet.snowtrace.io/tx/0x3bd8496ba6d1b9e5630cabde70e4a896c6d8a25055971364a4b9c7bb9581eacb) |
 | Token name / symbol | Ancorhash Confidential RWA / ACRWA |
 | Relayer / owner | `0x8458cF7ED1f5CeA1fe2cD1aa34E67A53a88Bf38e` |
 
