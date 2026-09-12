@@ -5,8 +5,12 @@ namespace Ancorhash.Core.Models;
 /// <param name="DocumentHash">Hash SHA-256 normalizzato (lowercase, senza 0x).</param>
 /// <param name="TransactionHash">Transaction hash on-chain (con prefisso 0x).</param>
 /// <param name="ChainId">Chain ID EIP-155 della rete su cui è avvenuto il broadcast.</param>
+/// <param name="ArkivEntityKey">Chiave a 32 byte dell'entità Arkiv corrispondente.</param>
+/// <param name="ArkivExpiresAtBlock">Blocco di scadenza dell'entità, riletto dalla ricevuta.</param>
 public sealed record NotarizationResult(
     string DocumentId,
     string DocumentHash,
     string TransactionHash,
-    int ChainId);
+    int ChainId,
+    string ArkivEntityKey,
+    ulong ArkivExpiresAtBlock);

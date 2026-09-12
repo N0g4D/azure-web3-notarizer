@@ -60,7 +60,9 @@ public sealed class NotarizeFunction(
             DocumentId: payload.DocumentId ?? string.Empty,
             DocumentHash: payload.DocumentHash ?? string.Empty,
             WalletAddress: payload.WalletAddress ?? string.Empty,
-            ChainId: payload.ChainId ?? 0);
+            ChainId: payload.ChainId ?? 0,
+            SwarmReference: payload.SwarmReference ?? string.Empty,
+            ExpirationSeconds: payload.ExpirationSeconds ?? 0);
 
         try
         {
@@ -80,6 +82,15 @@ public sealed class NotarizeFunction(
                 "Notarize rifiutata per documento {DocumentId}: chain {ChainId} non supportata",
                 command.DocumentId, ex.ChainId);
             return Error(StatusCodes.Status400BadRequest, ex.Message);
+        }
+        catch (ArkivIndexingException ex)
+        {
+            // Arkiv gira prima del relayer: qui nessun gas è stato speso.
+            logger.LogError(ex,
+                "Indicizzazione Arkiv fallita per documento {DocumentId} (codice {Code})",
+                command.DocumentId, ex.Code);
+            return Error(StatusCodes.Status502BadGateway,
+                $"Indicizzazione su Arkiv fallita: {ex.Message}");
         }
         catch (BlockchainUnavailableException ex)
         {

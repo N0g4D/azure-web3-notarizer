@@ -1,4 +1,5 @@
 using Ancorhash.Core.Abstractions;
+using Ancorhash.Infrastructure.Arkiv;
 using Ancorhash.Infrastructure.Blockchain;
 using Ancorhash.Infrastructure.Configuration;
 using Ancorhash.Infrastructure.DocumentIntelligence;
@@ -66,6 +67,16 @@ public static class DependencyInjection
             client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         });
         services.AddSingleton<IPriceOracleService, CoinGeckoPriceOracleService>();
+
+        // Arkiv: la chiave privata segue lo stesso pattern del relayer EVM
+        // (Key Vault in cloud, variabile d'ambiente in locale), mai da appsettings.
+        services.AddOptions<ArkivOptions>()
+            .Bind(configuration.GetSection(ArkivOptions.SectionName))
+            .PostConfigure(options => options.PrivateKey =
+                configuration[ArkivOptions.PrivateKeyConfigKey] ?? string.Empty)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton<IArkivIndexer, NodeArkivIndexer>();
 
         services.AddSingleton<IWeb3Factory, NethereumWeb3Factory>();
         services.AddSingleton<IWalletAddressValidator, NethereumWalletAddressValidator>();

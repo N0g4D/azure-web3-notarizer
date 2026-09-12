@@ -257,6 +257,44 @@ two rather than contorting the document to chase a regex.
 
 ---
 
+## F-09 · `ExpirationTime.fromSeconds()` throws on values the prose docs invite
+
+**Severity:** low, but it is a trap on the Mission 02 path.
+
+`official/typescript-sdk/mutating-data` introduces the duration helpers as a
+plain range — *"A variable expiry, from `fromSeconds()` up to `fromYears()`"* —
+with no hint that the argument is constrained. The installed 0.8.0 typings say
+otherwise:
+
+```ts
+/**
+ * A raw number of seconds. Must be a whole number of blocks' worth — see the
+ * other helpers, which all produce one by construction.
+ * @throws {InvalidExpiryError} If the duration is not a positive multiple of
+ *         the block time.
+ */
+fromSeconds: (seconds: number) => Lifetime
+```
+
+So `fromSeconds(60)` is fine at a 2-second block time and `fromSeconds(61)`
+throws. A product that takes a lifetime in seconds from user input — ours does,
+via `expiration_seconds` — hits this the first time someone enters an odd
+number, and the constraint appears only in the JSDoc, not on the docs page that
+teaches the API.
+
+**Suggestion:** state the multiple-of-block-time rule on the Mutating data
+page next to the helper list, or round internally and say so.
+
+**Not a blocker for us:** we already moved to `fromBlocks()` after the
+`check_schema` warning about wall-clock drift (see F-08 and `schema.md` §5), and
+`fromBlocks` is *"the one duration with no conversion."* We would have hit this
+had we kept the first design.
+
+**Observed:** 2026-09-11, `@arkiv-network/sdk@0.8.0` installed from npm,
+`integrity sha512-OnCrCfJqbnqr…`.
+
+---
+
 ## What worked well
 
 Recording this honestly, because the bounty asks for both.

@@ -12,7 +12,9 @@ memory; where we have not yet executed something, it is marked **unverified**.
 - **Network:** Tiramisu, `chainId 7738577`, block time **2 s nominal**
   (measured 2.00 s/block on 2026-09-11; not an SLA — see §5)
 - **SDK:** `@arkiv-network/sdk@0.8.0` + `viem`
-- **Status:** design. No entity has been written yet.
+- **Status:** implemented. The writer constructs every attribute and reaches
+  transaction submission; no entity created yet — the signing wallet needs
+  test GLM from the faucet (a human step: login + CAPTCHA).
 - **Note on scope:** `schema.md` is no longer an Arkiv qualification
   requirement — current guidance calls it *"useful project documentation… an
   optional evidence index"* (`guides/ethrome-current`). We write it anyway,
@@ -103,10 +105,11 @@ such as a `keccak256` digest."*
   cells — rather than downgrade the primary. Storing it once as `str` to get
   both would silently make every exact lookup a string comparison.
 
-  **Unverified:** whether `bytes32()` accepts a `0x`-prefixed string, a
-  `Uint8Array`, or both. The docs show `bytes32(contentHash)` without stating
-  the input type. To be confirmed in STEP 4 against the SDK typings, not
-  guessed.
+  **Verified** against the installed 0.8.0 source:
+  `function bytes32(value: Hex | Uint8Array): Bytes32Value`, normalised by
+  `asFixedHex("bytes32", value, 32)` to lowercase `0x` hex. So it takes either,
+  and our bare 64-hex must be `0x`-prefixed first — the writer does that in
+  `toHex32()`.
 
 **`chain_id` → `u64`, not `i32`.**
 Every chain we target today fits in `i32` (Sepolia 11155111, Amoy 80002, Fuji
@@ -250,8 +253,10 @@ depend on it. An idle stretch overnight would stretch a 30-block lifetime from
 ```ts
 import { ExpirationTime } from "@arkiv-network/sdk"
 
-const blocks = BigInt(Math.ceil(expirationSeconds / 2))
-ExpirationTime.fromBlocks(blocks)          // 60 s -> 30n blocks
+// Verified signature: fromBlocks(blocks: number) => Lifetime — a number,
+// not a bigint.
+const blocks = Math.ceil(expirationSeconds / 2)
+ExpirationTime.fromBlocks(blocks)          // 60 s -> 30 blocks
 ```
 
 `fromBlocks()` is *"the one duration with no conversion"*
@@ -427,11 +432,15 @@ anchor plus `createdBy()` rather than leaning on negation.
 
 ## 8. Open items for STEP 3 / STEP 4
 
-- [ ] Confirm what `bytes32()` accepts (hex string vs `Uint8Array`) — typings, not guesswork
-- [ ] Confirm `ExpirationTime.fromBlocks()` exists at 0.8.0 and its exact signature
-- [ ] Rename the backend field `swarm_reference` → `swarm_address`, since it carries the 64-hex public address
-- [ ] Reject 128-hex input server-side: defence in depth for the hard invariant
-- [ ] Record the `expiresAt` returned by `createEntity()` rather than our estimate
+- [x] Confirm what `bytes32()` accepts — `Hex | Uint8Array`, verified in 0.8.0 source
+- [x] Confirm `ExpirationTime.fromBlocks()` — exists, takes `number` (not bigint)
+- [ ] Rename `swarm_reference` → `swarm_address` end-to-end (the C#→Node bridge
+      already sends `swarm_address`; the HTTP contract still says
+      `swarm_reference`, kept so the Phase 1 frontend keeps working)
+- [x] Reject 128-hex input server-side — `NotarizationService` throws before any
+      network call, and the Node writer re-checks every field independently
+- [x] Record the `expiresAt` returned by `createEntity()` — the writer returns it
+      as `expires_at_block`; `CreateEntityReturnType.expiresAt: bigint`
 - [x] Run `check_schema` from the MCP against this file — done 2026-09-11.
       Six warnings, four fixed (entity type section, off-Arkiv section,
       unsupported-predicate tokens, Lifetime Extension). Two remain and are

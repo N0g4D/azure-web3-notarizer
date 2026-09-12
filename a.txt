@@ -777,3 +777,173 @@ MOD    a.txt                questa appendice
 
 Nessun pacchetto installato. Nessun codice di integrazione scritto:
 lo STEP 3 attende la review.
+
+
+================================================================================
+APPENDICE D · FASE 2 — BACKEND & INTEGRAZIONE ARKIV
+Data: 2026-09-11
+================================================================================
+
+D0. UNA ISTRUZIONE NON ESEGUITA COME SCRITTA  [decisione dell'utente]
+--------------------------------------------------------------------------------
+La richiesta diceva: "The remaining 64 chars of the SwarmReference (the KMS
+decryption key) must be placed inside the unindexed JSON payload."
+
+NON eseguita. Su Arkiv "non indicizzato" NON vuol dire "privato": il payload è
+un campo selezionabile, restituito a chiunque.
+
+  official/typescript-sdk/querying-data:
+    payload | Uint8Array | The raw payload bytes
+    "Call select() with no argument, or with "*", to fetch all eleven fields."
+  manual/prizes.md:44:
+    "It is not a confidentiality layer. Entities are public and verifiable by
+     design, so secrets and personal data stay out."
+
+Conseguenza: chiunque esegua la query Q1 di schema.md avrebbe letto
+swarm_address dagli attributi e la chiave dal payload, ricomposto la reference
+di 128 hex e decifrato il documento. Per ogni documento, in modo permanente e
+irreversibile.
+
+L'utente ha scelto "Keep the key out of Arkiv". La chiave resta nel browser,
+esattamente come in Fase 1.
+
+
+D1. STEP 1 — DTO E DOMINIO C#
+--------------------------------------------------------------------------------
+MOD NotarizeHttpRequest.cs   + swarm_reference (string), + expiration_seconds (int)
+MOD NotarizationCommand.cs   + SwarmReference, + ExpirationSeconds
+MOD NotarizeFunction.cs      mappatura dei due campi + catch ArkivIndexingException
+MOD NotarizationService.cs   validazione
+
+VALIDAZIONE (difesa in profondità sull'invariante):
+  - 128 hex  -> RIFIUTATO con log di errore esplicito. Se arriva una reference
+                completa, il frontend ha smesso di chiamare toPublicAddress()
+                e sta per pubblicare la chiave.
+  - 64 hex   -> richiesto, senza prefisso 0x
+  - expiration_seconds in [60, 315.360.000]  (1 minuto .. 3650 giorni)
+    Il tetto coincide esattamente con MAX_VALIDITY_DAYS della UI.
+
+MOD NotarizationResult.cs / NotarizeHttpResponse.cs
+  + arkiv_entity_key, + arkiv_expires_at_block (stringa: è un uint64)
+
+
+D2. STEP 2 — WRITER NODE
+--------------------------------------------------------------------------------
+NUOVO src/Ancorhash.Infrastructure/ArkivWriter/
+      package.json, .env.example, .gitignore, src/write-entity.mjs
+      npm install @arkiv-network/sdk@0.8.0 viem  -> 15 pacchetti, 0 vulnerabilità
+
+ESM puro, nessuno step di build: un bridge invocato da Process non deve poter
+fallire in compilazione.
+
+API VERIFICATA SUI TYPINGS INSTALLATI, non sulla documentazione:
+  bytes32(value: Hex | Uint8Array)         -> serve il prefisso 0x
+  u64(value: bigint | number | string)
+  str(value: string)                        rifiuta i control char
+  i32(value: number | bigint)
+  ExpirationTime.fromBlocks(blocks: number) -> NUMBER, non bigint
+  walletClient.createEntity(params, txParams?)
+    -> { entityKey: Hex, txHash: Hash, expiresAt: bigint }
+  jsonToPayload(json: object): Uint8Array
+
+SCHEMA APPLICATO (arkiv/schema.md C1), 9 attributi:
+  app str("ancorhash") · type str("notarization") · schema_version i32(1)
+  document_hash bytes32 · swarm_address bytes32 · org str · doc_type str
+  chain_id u64 · notarized_at u64(Date.now())
+
+PAYLOAD: solo metadati di presentazione. NESSUNA CHIAVE.
+
+MISSION 02:
+  lifetimeBlocks = ceil(expiration_seconds / 2)
+  ExpirationTime.fromBlocks(lifetimeBlocks)     60 s -> 30 blocchi
+  expiresAt RILETTO dalla ricevuta, mai stimato.
+
+  Si usa fromBlocks e NON atBlock(head + n): a.txt C2 documenta che una
+  scadenza assoluta calcolata su un head già vecchio può atterrare dopo ed
+  essere rifiutata come "dead on arrival". Una durata si risolve
+  all'atterraggio e non può correre.
+
+SICUREZZA DEL WRITER:
+  - input su STDIN, non su argv: gli argomenti sono visibili nella process list
+  - assertNoFullReference(): se un QUALSIASI campo contiene 128 hex, aborto
+    prima di toccare la rete
+  - chiave privata solo da ARKIV_PRIVATE_KEY, mai loggata, mai in output
+  - in errore non si restituisce né stack né echo dell'input
+
+
+D3. STEP 3 — PONTE C# -> NODE
+--------------------------------------------------------------------------------
+NUOVO IArkivIndexer.cs, ArkivIndexResult.cs, ArkivIndexingException.cs,
+      ArkivOptions.cs, NodeArkivIndexer.cs
+
+System.Diagnostics.Process, STDIN/STDOUT JSON, timeout configurabile (90 s),
+kill dell'intero albero di processi su timeout. La chiave privata passa
+dall'ambiente del figlio e segue lo stesso pattern del relayer EVM
+(Key Vault in cloud, variabile d'ambiente in locale).
+
+ORDINE: Arkiv PRIMA del relayer, come richiesto. Se l'indicizzazione fallisce
+non si è ancora speso gas. Un'entità Arkiv orfana, se il broadcast fallisse
+dopo, scade da sola: è esattamente il comportamento voluto.
+
+CONSEGUENZA DA REGISTRARE: girando prima del relayer, tx_hash NON esiste
+ancora e quindi NON finisce nel payload, che schema.md §3 invece prevede.
+Per averlo servirebbe un Patch (tag 2) successivo, oppure invertire l'ordine
+e rinunciare al risparmio di gas. Non risolto: è una scelta aperta.
+
+
+D4. VERIFICA ESEGUITA
+--------------------------------------------------------------------------------
+  dotnet build            0 errori, 0 avvisi
+  npx tsc -b (frontend)   exit 0
+  npm run build           OK
+  writer, guardia chiave  {"ok":false,"code":"secret_leak_blocked"}  su 128 hex
+  writer, chiave assente  {"ok":false,"code":"missing_key"}
+  writer, giro completo   costruisce TUTTI gli attributi, la scadenza e arriva
+                          a inviare la transazione. Fallisce con
+                          "Execution error without revert data" perché il
+                          wallet usa-e-getta non ha fondi. guides/known-issues
+                          documenta proprio questo errore opaco per i wallet
+                          non finanziati: il writer ora aggiunge l'indizio e il
+                          link al faucet invece di farlo ridiagnosticare.
+  contratto bridge        JSON in forma SnakeCaseLower accettato dal writer,
+                          ok/code/error mappano su ArkivWriterOutput
+
+NON VERIFICATO: la creazione reale di un'entità. Serve un wallet finanziato
+con test GLM dal faucet https://hub.arkiv.network/faucet, che richiede login e
+CAPTCHA: è un passaggio umano, non automatizzabile.
+
+
+D5. FRICTION
+--------------------------------------------------------------------------------
++ F-09  ExpirationTime.fromSeconds() lancia InvalidExpiryError se il valore
+        non è un multiplo del block time. La pagina di documentazione presenta
+        i helper come una scala continua "from fromSeconds() up to fromYears()"
+        senza accennare al vincolo, che compare solo nel JSDoc. fromSeconds(61)
+        esplode. Non ci ha bloccati solo perché eravamo già passati a
+        fromBlocks() dopo il warning di check_schema.
+
+schema.md: tutti i punti "unverified" ora risolti contro i typings installati.
+Stato passato da "design" a "implementato, entità non ancora creata".
+
+
+D6. FILE TOCCATI
+--------------------------------------------------------------------------------
+NUOVO  ArkivWriter/{package.json,.env.example,.gitignore,src/write-entity.mjs}
+NUOVO  Core/Abstractions/IArkivIndexer.cs
+NUOVO  Core/Models/ArkivIndexResult.cs
+NUOVO  Core/Exceptions/ArkivIndexingException.cs
+NUOVO  Infrastructure/Configuration/ArkivOptions.cs
+NUOVO  Infrastructure/Arkiv/NodeArkivIndexer.cs
+MOD    NotarizeHttpRequest.cs, NotarizeHttpResponse.cs, NotarizeFunction.cs
+MOD    NotarizationCommand.cs, NotarizationResult.cs, NotarizationService.cs
+MOD    Infrastructure/DependencyInjection.cs
+MOD    arkiv/schema.md, arkiv/friction.md, a.txt
+
+
+D7. PROSSIMO PASSO
+--------------------------------------------------------------------------------
+1. UMANO: finanziare il wallet Arkiv dal faucet, poi mettere la chiave in
+   ARKIV_PRIVATE_KEY (locale) o Arkiv:PrivateKey (Key Vault).
+2. Prima entità reale + prova Mission 02: stessa query prima e dopo la
+   scadenza, nessuna chiamata di Delete, polling e non sleep.
+3. Decidere la questione tx_hash nel payload (vedi D3).

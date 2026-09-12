@@ -27,4 +27,21 @@ public sealed record NotarizeHttpRequest
     /// <summary>Token Cloudflare Turnstile emesso dal widget (obbligatorio, verificato server-side).</summary>
     [JsonPropertyName("turnstile_token")]
     public string? TurnstileToken { get; init; }
+
+    /// <summary>
+    /// Indirizzo pubblico Swarm del documento cifrato: 64 caratteri hex.
+    /// ATTENZIONE: NON è la reference completa. Con encrypt:true la reference
+    /// Swarm è di 128 hex = 32 byte di indirizzo + 32 byte di CHIAVE DI
+    /// DECIFRATURA. La chiave non lascia mai il browser: il frontend invia
+    /// solo toPublicAddress(). Un valore di 128 hex qui viene rifiutato.
+    /// </summary>
+    [JsonPropertyName("swarm_reference")]
+    public string? SwarmReference { get; init; }
+
+    /// <summary>
+    /// Durata di validità del record in secondi. Unità esplicita nel nome:
+    /// su Arkiv diventa una scadenza espressa in BLOCCHI (2 s nominali).
+    /// </summary>
+    [JsonPropertyName("expiration_seconds")]
+    public int? ExpirationSeconds { get; init; }
 }
