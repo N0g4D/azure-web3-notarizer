@@ -1,4 +1,4 @@
-/** Spinner circolare per gli stati di attesa. */
+/** Circular spinner for pending states. */
 export function Spinner({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg

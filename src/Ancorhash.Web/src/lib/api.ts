@@ -1,4 +1,4 @@
-/** Client tipizzato per il backend Ancorhash (Azure Functions .NET). */
+/** Typed client for the Ancorhash backend (Azure Functions .NET). */
 
 const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -6,19 +6,19 @@ const API_BASE_URL =
 
 export interface NotarizeRequest {
   document_id: string
-  /** Impronta SHA-256 del documento in chiaro: l'ancora di integrità. */
+  /** SHA-256 digest of the document: the integrity anchor. */
   document_hash: string
   /**
-   * INDIRIZZO pubblico Swarm del documento cifrato: 64 hex.
-   * Non è la reference completa di 128 hex, che include la chiave di
-   * decifratura: vedi `toPublicAddress` in lib/swarm.ts. Il nome dice
-   * "address" proprio per non invitare l'errore.
+   * PUBLIC Swarm address of the encrypted document: 64 hex characters.
+   * This is not the full 128-hex reference, which embeds the decryption key —
+   * see `toPublicAddress` in lib/swarm.ts. The field is named "address"
+   * precisely so it does not invite that mistake.
    */
   swarm_address: string
   /**
-   * Durata di validità del record, in secondi. L'unità è esplicita nel nome
-   * perché la Fase 2 la traduce in una scadenza Arkiv, dove sbagliare unità
-   * significa un'entità che non scade mai (o che scade subito).
+   * Record lifetime, in seconds. The unit is explicit in the name because
+   * Phase 2 translates it into an Arkiv expiry, where getting the unit wrong
+   * means an entity that never expires (or one that expires immediately).
    */
   expiration_seconds: number
   wallet_address: string
@@ -32,18 +32,18 @@ export interface NotarizeResponse {
   doc_hash: string
   tx_hash: string
   chain_id: number
-  /** Chiave dell'entità Arkiv. Vuota se l'indicizzazione è fallita. */
+  /** Arkiv entity key. Empty when indexing failed. */
   arkiv_entity_key: string
-  /** Blocco di scadenza dell'entità. Stringa: è un uint64. */
+  /** Block the entity expires at. A string, because it is a uint64. */
   arkiv_expires_at_block: string
   /**
-   * False se l'ancora on-chain è riuscita ma la scrittura su Arkiv no.
-   * La notarizzazione resta valida: la prova è la transazione.
+   * False when the on-chain anchor succeeded but the Arkiv write did not.
+   * The notarization is still valid: the proof is the transaction.
    */
   arkiv_indexed: boolean
-  /** Codice macchina del fallimento (writer_not_found, missing_key, …). */
+  /** Machine-readable failure code (writer_not_found, missing_key, …). */
   arkiv_error_code?: string
-  /** Motivo leggibile: distingue "scrittura fallita" da "entità scaduta". */
+  /** Human-readable reason: tells "write failed" apart from "entity expired". */
   arkiv_error?: string
 }
 
@@ -76,12 +76,12 @@ export class ApiError extends Error {
 
 async function parseOrThrow<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let detail = `Errore ${response.status} dal backend.`
+    let detail = `Error ${response.status} from the backend.`
     try {
       const body = (await response.json()) as ApiErrorResponse
       if (body.detail) detail = body.detail
     } catch {
-      // body non JSON: teniamo il messaggio generico
+      // Non-JSON body: keep the generic message.
     }
     throw new ApiError(response.status, detail)
   }
@@ -99,7 +99,7 @@ export async function notarize(
   return parseOrThrow<NotarizeResponse>(response)
 }
 
-/** Reti EVM configurate sul relayer (solo chain_id e nome, mai RPC URL). */
+/** EVM networks configured on the relayer (chain id and name only, never RPC URLs). */
 export async function getChains(): Promise<Chain[]> {
   const response = await fetch(`${API_BASE_URL}/api/v1/chains`)
   const body = await parseOrThrow<ChainsResponse>(response)

@@ -20,15 +20,15 @@ import {
 } from './lib/swarm'
 import type { ConnectionInfo, StampStatus } from './lib/swarm'
 
-/** Sitekey pubblica Cloudflare Turnstile (dal bundle Vite). */
+/** Public Cloudflare Turnstile sitekey (from the Vite bundle). */
 const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY as
   | string
   | undefined
 
 /**
- * Block explorer per chain id: il backend espone solo chain_id e nome,
- * il link di verifica è una responsabilità di presentazione del frontend.
- * Chain senza explorer noto → si mostra il solo tx_hash, senza link.
+ * Block explorer per chain id: the backend exposes only chain_id and name, so
+ * the verification link is a frontend presentation concern.
+ * A chain with no known explorer → show the tx_hash alone, unlinked.
  */
 const EXPLORER_TX_URLS: Record<number, string> = {
   43113: 'https://testnet.snowtrace.io/tx/',
@@ -38,51 +38,50 @@ const EXPLORER_TX_URLS: Record<number, string> = {
   137: 'https://polygonscan.com/tx/',
 }
 
-/** Wallet mock del PoC (checksummato EIP-55, richiesto dal backend). */
+/** PoC mock wallet (EIP-55 checksummed, required by the backend). */
 const MOCK_WALLET_ADDRESS = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
 
-/** Ricarico fisso di servizio applicato sopra il costo di rete (USD). */
+/** Fixed service markup applied on top of the network cost (USD). */
 const SERVICE_FEE_USD = 1.48
-/** Durata della simulazione di pagamento (checkout mock per le demo B2B). */
+/** Payment simulation duration (mock checkout for B2B demos). */
 const PAYMENT_SIMULATION_MS = 2000
 
 const SECONDS_PER_DAY = 86_400
-/** Validità di default del record, in giorni. */
+/** Default record validity, in days. */
 const DEFAULT_VALIDITY_DAYS = '30'
-/** Tetto alla validità: oltre i 10 anni il costo dello stamp non ha senso. */
+/** Validity ceiling: beyond 10 years the stamp cost stops making sense. */
 const MAX_VALIDITY_DAYS = 3650
 /**
- * Preset demo: una vita di 60 secondi rende la scadenza osservabile durante
- * il judging. Con la sola unità "giorni" nessun giudice vedrebbe mai un
- * record scadere da solo.
+ * Demo preset: a 60-second lifetime makes expiry observable during judging.
+ * With days as the only unit, no judge would ever see a record expire.
  */
 const DEMO_EXPIRATION_SECONDS = 60
 
-/** Importo in USD a due decimali; sotto il centesimo mostra "<$0.01". */
+/** USD amount to two decimals; below a cent it shows "<$0.01". */
 function formatUsd(amount: number): string {
   if (amount > 0 && amount < 0.01) return '<$0.01'
   return `$${amount.toFixed(2)}`
 }
 
-/** Suffisso di costo per il selettore: "(Gratis)" o "(~$0.02)". */
+/** Cost suffix for the selector: "(Free)" or "(~$0.02)". */
 function formatChainCost(chain: Chain): string {
-  if (chain.is_free) return '(Gratis)'
-  if (chain.estimated_cost_usd <= 0) return '(costo n/d)'
+  if (chain.is_free) return '(Free)'
+  if (chain.estimated_cost_usd <= 0) return '(cost n/a)'
   const rounded = chain.estimated_cost_usd.toFixed(2)
-  // Sotto il centesimo mostriamo "<$0.01" invece di "~$0.00".
+  // Below a cent show "<$0.01" rather than "~$0.00".
   return rounded === '0.00' ? '(<$0.01)' : `(~$${rounded})`
 }
 
-/** Reti disponibili, caricate dal backend al mount. */
+/** Available networks, loaded from the backend on mount. */
 type ChainsState =
   | { kind: 'loading' }
   | { kind: 'ready'; chains: Chain[] }
   | { kind: 'error'; message: string }
 
 /**
- * Stato del documento. `swarmReference` è la reference cifrata completa
- * (128 hex, chiave inclusa) e resta confinata al browser: verso il backend
- * viaggia solo il suo indirizzo pubblico.
+ * Document state. `swarmReference` is the full encrypted reference (128 hex,
+ * key included) and stays confined to the browser: only its public address
+ * travels to the backend.
  */
 type Phase =
   | { kind: 'idle' }
@@ -109,7 +108,7 @@ type Phase =
       message: string
     }
 
-/** Icona ad ancora, stile feather: linee 2px, nessuna libreria esterna. */
+/** Anchor icon, feather style: 2px strokes, no external library. */
 function AnchorIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg
@@ -141,11 +140,11 @@ function App() {
   const [swarmInfo, setSwarmInfo] = useState<ConnectionInfo | null>(null)
   const [swarmInitError, setSwarmInitError] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
-  // canUpload non basta: lo stamp va guardato davvero (swarm/friction.md S-02).
+  // canUpload is not enough: the stamp must actually be inspected (swarm/friction.md S-02).
   const [stamp, setStamp] = useState<StampStatus>(UNKNOWN_STAMP)
 
-  // Il client monta un iframe nascosto e non è riutilizzabile dopo destroy():
-  // va quindi creato dentro l'effect, così lo StrictMode ne ricrea uno nuovo.
+  // The client mounts a hidden iframe and cannot be reused after destroy(),
+  // so it is created inside the effect and StrictMode builds a fresh one.
   useEffect(() => {
     let isActive = true
     const client = createSwarmClient((info) => {
@@ -161,8 +160,8 @@ function App() {
         if (!isActive) return
         setSwarmInitError(
           error instanceof Error
-            ? `Swarm ID non raggiungibile: ${error.message}`
-            : 'Swarm ID non raggiungibile.',
+            ? `Swarm ID unreachable: ${error.message}`
+            : 'Swarm ID unreachable.',
         )
       })
 
@@ -180,19 +179,19 @@ function App() {
     } catch (error) {
       setSwarmInitError(
         error instanceof Error
-          ? `Connessione a Swarm ID annullata: ${error.message}`
-          : 'Connessione a Swarm ID annullata.',
+          ? `Swarm ID connection cancelled: ${error.message}`
+          : 'Swarm ID connection cancelled.',
       )
     } finally {
       setIsConnecting(false)
     }
   }, [isConnecting, swarmClient])
 
-  // Ogni volta che la connessione cambia, si rilegge il batch: un gift code
-  // riscattato a metà sessione deve sbloccare la UI senza ricaricare.
-  // Si dipende dall'id dell'identità e non dall'oggetto: ConnectionInfo arriva
-  // nuovo a ogni notifica, e usarlo come dipendenza rileggerebbe il batch di
-  // continuo.
+  // The batch is re-read whenever the connection changes: a gift code
+  // redeemed mid-session must unlock the UI without a reload.
+  // Depend on the identity id rather than the object: ConnectionInfo arrives
+  // fresh on every notification, and using it as a dependency would re-read
+  // the batch continuously.
   const swarmIdentityId = swarmInfo?.identity?.id
   const swarmCanUpload = swarmInfo?.canUpload
   useEffect(() => {
@@ -210,13 +209,13 @@ function App() {
     }
   }, [swarmClient, swarmIdentityId, swarmCanUpload])
 
-  // "Pronto" solo con un batch che esiste ED è usable.
+  // "Ready" only with a batch that exists AND is usable.
   const swarmBlocker = swarmInfo
     ? uploadUnavailableReason(swarmInfo, stamp)
-    : 'Inizializzazione di Swarm ID…'
+    : 'Initialising Swarm ID…'
   const canUploadToSwarm = swarmBlocker === null
 
-  // --- Validità del record ------------------------------------------------
+  // --- Record validity ----------------------------------------------------
   const [validityDays, setValidityDays] = useState(DEFAULT_VALIDITY_DAYS)
   const [isDemoExpiry, setIsDemoExpiry] = useState(false)
 
@@ -236,12 +235,12 @@ function App() {
       if (chains.length === 0) {
         setChainsState({
           kind: 'error',
-          message: 'Nessuna rete configurata sul backend.',
+          message: 'No network configured on the backend.',
         })
         return
       }
       setChainsState({ kind: 'ready', chains })
-      // Preseleziona la prima rete, preservando un'eventuale scelta precedente.
+      // Preselect the first network, preserving any earlier choice.
       setSelectedChainId(
         (current) =>
           chains.find((c) => c.chain_id === current)?.chain_id ??
@@ -253,7 +252,7 @@ function App() {
         message:
           error instanceof ApiError
             ? error.message
-            : 'Impossibile caricare le reti dal backend.',
+            : 'Unable to load networks from the backend.',
       })
     }
   }, [])
@@ -262,11 +261,11 @@ function App() {
     void loadChains()
   }, [loadChains])
 
-  // Token anti-bot Turnstile: monouso, richiesto per ogni notarizzazione.
+  // Turnstile anti-bot token: single-use, required for every notarization.
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const turnstileRef = useRef<TurnstileInstance | null>(null)
 
-  // Checkout simulato: nessun pagamento reale, solo la fase di attesa percepita.
+  // Simulated checkout: no real payment, only the perceived waiting phase.
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const paymentTimerRef = useRef<number | null>(null)
 
@@ -275,13 +274,13 @@ function App() {
       ? chainsState.chains.find((c) => c.chain_id === selectedChainId)
       : undefined
 
-  // Riepilogo finanziario: gas a carico del relayer + ricarico di servizio.
+  // Financial summary: gas paid by the relayer + service markup.
   const gasCostUsd =
     selectedChain && !selectedChain.is_free ? selectedChain.estimated_cost_usd : 0
   const totalUsd = gasCostUsd + SERVICE_FEE_USD
 
-  // Ultimo file scelto: consente di riprovare l'upload dopo un errore Swarm
-  // (tipicamente un gift code riscattato dopo il primo tentativo).
+  // Last selected file: allows retrying the upload after a Swarm error
+  // (typically a gift code redeemed after the first attempt).
   const pendingFileRef = useRef<File | null>(null)
 
   const processFile = useCallback(
@@ -294,15 +293,15 @@ function App() {
           fileName: file.name,
           hash: '',
           swarmReference: '',
-          message: swarmInitError ?? 'Swarm ID non è ancora pronto.',
+          message: swarmInitError ?? 'Swarm ID is not ready yet.',
         })
         return
       }
 
       setPhase({ kind: 'analyzing', fileName: file.name, progress: 0 })
 
-      // L'hash è istantaneo e non dipende dalla rete: calcolarlo per primo
-      // separa nettamente "file illeggibile" da "Swarm non disponibile".
+      // Hashing is instant and network-independent: doing it first cleanly
+      // separates "unreadable file" from "Swarm unavailable".
       let hash: string
       try {
         hash = await sha256Hex(file)
@@ -312,7 +311,7 @@ function App() {
           fileName: file.name,
           hash: '',
           swarmReference: '',
-          message: 'Impossibile leggere il file selezionato.',
+          message: 'Unable to read the selected file.',
         })
         return
       }
@@ -342,7 +341,7 @@ function App() {
           message:
             error instanceof SwarmError
               ? error.message
-              : 'Upload su Swarm fallito.',
+              : 'Swarm upload failed.',
         })
       }
     },
@@ -357,11 +356,11 @@ function App() {
   const handleNotarize = useCallback(async () => {
     if (phase.kind !== 'preview' && phase.kind !== 'error') return
     const { fileName, hash, swarmReference } = phase
-    // Invariante del vault: nessuna ancora on-chain senza il blob cifrato.
+    // Vault invariant: no on-chain anchor without the encrypted blob.
     if (!hash || !swarmReference || selectedChainId === null) return
     if (!isDemoExpiry && !isValidityValid) return
-    // Con Turnstile configurato il token è obbligatorio; senza sitekey
-    // (solo dev) si prosegue e sarà il backend a respingere con 403.
+    // With Turnstile configured the token is mandatory; without a sitekey
+    // (dev only) we proceed and let the backend reject with 403.
     if (TURNSTILE_SITEKEY !== undefined && turnstileToken === null) return
 
     setPhase({ kind: 'submitting', fileName, hash, swarmReference })
@@ -369,7 +368,7 @@ function App() {
       const result = await notarize({
         document_id: fileName,
         document_hash: hash,
-        // Solo l'indirizzo: la chiave di decifratura non lascia il browser.
+        // Address only: the decryption key never leaves the browser.
         swarm_address: toPublicAddress(swarmReference),
         expiration_seconds: expirationSeconds,
         wallet_address: MOCK_WALLET_ADDRESS,
@@ -381,10 +380,10 @@ function App() {
       const message =
         error instanceof ApiError
           ? error.message
-          : 'Backend non raggiungibile. Verifica che le Azure Functions siano in esecuzione su localhost:7071.'
+          : 'Backend unreachable. Check that the Azure Functions host is running on localhost:7071.'
       setPhase({ kind: 'error', fileName, hash, swarmReference, message })
     } finally {
-      // Il token è monouso: forziamo un nuovo challenge per il prossimo tentativo.
+      // The token is single-use: force a fresh challenge for the next attempt.
       setTurnstileToken(null)
       turnstileRef.current?.reset()
     }
@@ -398,8 +397,8 @@ function App() {
   ])
 
   /**
-   * Checkout mock: mostra una fase di "pagamento in corso" per qualche secondo,
-   * poi delega alla notarizzazione reale. Nessun addebito viene effettuato.
+   * Mock checkout: shows a "payment in progress" phase for a few seconds, then
+   * delegates to the real notarization. No charge is ever made.
    */
   const handleCheckout = useCallback(() => {
     if (isProcessingPayment) return
@@ -419,7 +418,7 @@ function App() {
     setIsProcessingPayment(false)
   }, [])
 
-  // Evita che un timer pendente scriva stato su un componente smontato.
+  // Prevents a pending timer from writing state to an unmounted component.
   useEffect(() => cancelPendingPayment, [cancelPendingPayment])
 
   const reset = useCallback(() => {
@@ -435,7 +434,7 @@ function App() {
     phase.kind === 'submitting' ||
     phase.kind === 'success' ||
     (phase.kind === 'error' && phase.hash !== '')
-  // Il checkout compare solo quando il documento è davvero su Swarm.
+  // Checkout appears only once the document is genuinely on Swarm.
   const showCheckout =
     (phase.kind === 'preview' ||
       phase.kind === 'submitting' ||
@@ -453,22 +452,22 @@ function App() {
 
       <main className="mx-auto max-w-3xl px-6 py-12">
         <h2 className="text-2xl font-bold tracking-tight">
-          Notarizza un documento
+          Notarize a document
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-          Il documento è cifrato nel browser e archiviato su Swarm; la sua
-          impronta SHA-256, calcolata localmente, viene ancorata on-chain. Il
-          file in chiaro non lascia mai questo dispositivo.
+          The document is encrypted in your browser and stored on Swarm; its
+          SHA-256 fingerprint, computed locally, is anchored on-chain. The
+          plaintext file never leaves this device.
         </p>
 
         <div className="mt-8">
           {phase.kind === 'idle' && (
             <>
-              {/* Archiviazione cifrata: prerequisito della notarizzazione */}
+              {/* Encrypted storage: a prerequisite for notarization */}
               <div className="mb-5 rounded-lg border border-neutral-200 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold">
-                    Archiviazione cifrata (Swarm)
+                    Encrypted storage (Swarm)
                   </h3>
                   <span
                     className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
@@ -477,20 +476,20 @@ function App() {
                         : 'border-neutral-200 text-neutral-500'
                     }`}
                   >
-                    {canUploadToSwarm ? 'Pronto' : 'Non disponibile'}
+                    {canUploadToSwarm ? 'Ready' : 'Unavailable'}
                   </span>
                 </div>
 
                 {swarmInfo?.identity ? (
                   <dl className="mt-3 space-y-1.5 text-xs">
                     <div className="flex gap-2">
-                      <dt className="w-28 shrink-0 text-neutral-500">Identità</dt>
+                      <dt className="w-28 shrink-0 text-neutral-500">Identity</dt>
                       <dd className="font-medium text-neutral-900">
                         {swarmInfo.identity.name}
                       </dd>
                     </div>
                     <div className="flex gap-2">
-                      <dt className="w-28 shrink-0 text-neutral-500">Indirizzo</dt>
+                      <dt className="w-28 shrink-0 text-neutral-500">Address</dt>
                       <dd className="break-all font-mono text-neutral-700">
                         {swarmInfo.identity.address}
                       </dd>
@@ -501,7 +500,7 @@ function App() {
                       </dt>
                       <dd className="text-neutral-700">
                         {!stamp.checked ? (
-                          <span className="text-neutral-400">verifica in corso…</span>
+                          <span className="text-neutral-400">checking…</span>
                         ) : stamp.error ? (
                           <span className="text-neutral-500">{stamp.error}</span>
                         ) : stamp.batch ? (
@@ -510,22 +509,22 @@ function App() {
                               {stamp.batch.batchID.slice(0, 16)}…
                             </span>
                             <span className="ml-2">
-                              {stamp.batch.usable ? 'utilizzabile' : 'NON utilizzabile'}
+                              {stamp.batch.usable ? 'usable' : 'NOT usable'}
                             </span>
                             <span className="block text-neutral-400">
                               {describeStamp(stamp.batch)}
                             </span>
                           </>
                         ) : (
-                          <span className="text-neutral-500">nessuno</span>
+                          <span className="text-neutral-500">none</span>
                         )}
                       </dd>
                     </div>
                   </dl>
                 ) : (
                   <p className="mt-3 text-xs text-neutral-500">
-                    Accedi a Swarm ID con la tua seed phrase. Nessun nodo Bee da
-                    installare.
+                    Sign in to Swarm ID with your seed phrase. No Bee node to
+                    install.
                   </p>
                 )}
 
@@ -545,10 +544,10 @@ function App() {
                     {isConnecting ? (
                       <>
                         <Spinner className="h-3.5 w-3.5" />
-                        Connessione…
+                        Connecting…
                       </>
                     ) : (
-                      'Connetti Swarm ID'
+                      'Connect Swarm ID'
                     )}
                   </button>
                 )}
@@ -559,13 +558,13 @@ function App() {
                   htmlFor="chain-select"
                   className="text-xs font-medium text-neutral-500"
                 >
-                  Rete di destinazione
+                  Target network
                 </label>
 
                 {chainsState.kind === 'loading' && (
                   <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-400">
                     <Spinner className="h-3.5 w-3.5" />
-                    Caricamento reti disponibili…
+                    Loading available networks…
                   </div>
                 )}
 
@@ -577,7 +576,7 @@ function App() {
                       onClick={() => void loadChains()}
                       className="font-medium text-neutral-900 underline underline-offset-2"
                     >
-                      Riprova
+                      Retry
                     </button>
                   </div>
                 )}
@@ -620,8 +619,8 @@ function App() {
               />
               {!canUploadToSwarm && (
                 <p className="mt-3 text-xs text-neutral-400">
-                  Connetti Swarm ID per caricare un documento: senza
-                  archiviazione cifrata non c'è nulla da notarizzare.
+                  Connect Swarm ID to upload a document: without encrypted
+                  storage there is nothing to notarize.
                 </p>
               )}
             </>
@@ -631,11 +630,11 @@ function App() {
             <div className="flex items-center gap-3 rounded-lg border border-neutral-200 px-5 py-6 text-sm text-neutral-600">
               <Spinner className="h-4 w-4" />
               <span>
-                Cifratura e upload di{' '}
+                Encrypting and uploading{' '}
                 <span className="font-medium text-neutral-900">
                   {phase.fileName}
                 </span>{' '}
-                su Swarm
+                to Swarm
                 {phase.progress > 0 ? ` — ${phase.progress}%` : '…'}
               </span>
             </div>
@@ -654,19 +653,19 @@ function App() {
                     disabled={isBusy}
                     className="text-xs text-neutral-400 underline-offset-2 hover:text-neutral-900 hover:underline disabled:opacity-50"
                   >
-                    cambia file
+                    change file
                   </button>
                 )}
               </div>
 
-              {/* Blocco 1: impronta crittografica */}
+              {/* Block 1: cryptographic fingerprint */}
               <section className="rounded-lg border border-neutral-200 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold">
-                    Impronta Crittografica (SHA-256)
+                    Cryptographic fingerprint (SHA-256)
                   </h3>
                   <span className="shrink-0 rounded-full border border-neutral-200 px-2.5 py-0.5 text-[11px] font-medium text-neutral-500">
-                    Calcolata localmente
+                    Computed locally
                   </span>
                 </div>
                 <p className="mt-3 break-all font-mono text-xs leading-relaxed text-neutral-700">
@@ -674,15 +673,15 @@ function App() {
                 </p>
               </section>
 
-              {/* Blocco 2: blob cifrato su Swarm */}
+              {/* Block 2: encrypted blob on Swarm */}
               <section className="rounded-lg border border-neutral-200 p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold">
-                    Documento Cifrato (Swarm)
+                    Encrypted document (Swarm)
                   </h3>
                   {phase.swarmReference !== '' && (
                     <span className="shrink-0 rounded-full border border-neutral-200 px-2.5 py-0.5 text-[11px] font-medium text-neutral-500">
-                      Cifrato nel browser
+                      Encrypted in the browser
                     </span>
                   )}
                 </div>
@@ -692,7 +691,7 @@ function App() {
                     <dl className="mt-3 space-y-2 text-xs">
                       <div>
                         <dt className="font-medium text-neutral-500">
-                          Indirizzo pubblico (inviato al backend)
+                          Public address (sent to the backend)
                         </dt>
                         <dd className="mt-0.5 break-all font-mono text-neutral-700">
                           {toPublicAddress(phase.swarmReference)}
@@ -700,7 +699,7 @@ function App() {
                       </div>
                       <div>
                         <dt className="font-medium text-neutral-500">
-                          Reference completa — include la chiave di decifratura
+                          Full reference — includes the decryption key
                         </dt>
                         <dd className="mt-0.5 break-all font-mono text-neutral-700">
                           {phase.swarmReference}
@@ -708,16 +707,15 @@ function App() {
                       </div>
                     </dl>
                     <p className="mt-3 text-[11px] leading-relaxed text-neutral-400">
-                      Conserva la reference completa: è l'unico modo per
-                      rileggere il documento. Non viene inviata a nessun
-                      server.
+                      Keep the full reference: it is the only way to read the
+                      document back. It is never sent to any server.
                     </p>
                   </>
                 ) : (
                   <div className="mt-3">
                     <p className="text-xs text-neutral-400">
-                      Il documento non è su Swarm: la notarizzazione resta
-                      bloccata finché l'upload non riesce.
+                      The document is not on Swarm: notarization stays blocked
+                      until the upload succeeds.
                     </p>
                     <button
                       type="button"
@@ -725,23 +723,23 @@ function App() {
                       disabled={isBusy || !canUploadToSwarm}
                       className="mt-3 inline-flex items-center rounded-lg border border-neutral-900 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Riprova upload
+                      Retry upload
                     </button>
                   </div>
                 )}
               </section>
 
-              {/* Blocco 3: validità del record */}
+              {/* Block 3: record validity */}
               {phase.kind !== 'success' && phase.swarmReference !== '' && (
                 <section className="rounded-lg border border-neutral-200 p-5">
-                  <h3 className="text-sm font-semibold">Validità del record</h3>
+                  <h3 className="text-sm font-semibold">Record validity</h3>
 
                   <div className="mt-3 flex items-center gap-2">
                     <label
                       htmlFor="validity-days"
                       className="text-sm text-neutral-600"
                     >
-                      Giorni di validità
+                      Days of validity
                     </label>
                     <input
                       id="validity-days"
@@ -757,7 +755,7 @@ function App() {
 
                   {!isDemoExpiry && !isValidityValid && (
                     <p className="mt-2 text-xs text-neutral-500">
-                      Inserisci un numero intero di giorni tra 1 e{' '}
+                      Enter a whole number of days between 1 and{' '}
                       {MAX_VALIDITY_DAYS}.
                     </p>
                   )}
@@ -771,12 +769,12 @@ function App() {
                       className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-300 accent-black"
                     />
                     <span>
-                      Demo ETHRome — scade tra {DEMO_EXPIRATION_SECONDS} secondi
+                      ETHRome demo — expires in {DEMO_EXPIRATION_SECONDS} seconds
                     </span>
                   </label>
 
                   <p className="mt-3 text-[11px] text-neutral-400">
-                    Inviato al backend come{' '}
+                    Sent to the backend as{' '}
                     <span className="font-mono">
                       expiration_seconds = {expirationSeconds || 0}
                     </span>
@@ -792,25 +790,25 @@ function App() {
             <div className="flex items-baseline justify-between">
               <h3 className="text-sm font-semibold">Checkout</h3>
               <span className="text-[11px] text-neutral-400">
-                Pagamento simulato — nessun addebito reale
+                Simulated payment — no real charge
               </span>
             </div>
 
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex items-baseline justify-between">
-                <dt className="text-neutral-500">Costo Rete (Gas)</dt>
+                <dt className="text-neutral-500">Network cost (gas)</dt>
                 <dd className="font-mono text-neutral-900">
                   {formatUsd(gasCostUsd)}
                 </dd>
               </div>
               <div className="flex items-baseline justify-between">
-                <dt className="text-neutral-500">Commissione di Servizio</dt>
+                <dt className="text-neutral-500">Service fee</dt>
                 <dd className="font-mono text-neutral-900">
                   {formatUsd(SERVICE_FEE_USD)}
                 </dd>
               </div>
               <div className="flex items-baseline justify-between border-t border-neutral-200 pt-2 font-semibold text-neutral-900">
-                <dt>Totale da Pagare</dt>
+                <dt>Total due</dt>
                 <dd className="font-mono">${totalUsd.toFixed(2)}</dd>
               </div>
             </dl>
@@ -820,7 +818,7 @@ function App() {
                 htmlFor="card-number"
                 className="text-xs font-medium text-neutral-500"
               >
-                Metodo di pagamento
+                Payment method
               </label>
               <input
                 id="card-number"
@@ -848,8 +846,8 @@ function App() {
               </div>
             ) : (
               <p className="mt-4 text-xs text-neutral-400">
-                Turnstile non configurato (VITE_TURNSTILE_SITEKEY mancante): la
-                verifica anti-bot è disabilitata.
+                Turnstile not configured (VITE_TURNSTILE_SITEKEY missing):
+                anti-bot verification is disabled.
               </p>
             )}
 
@@ -868,15 +866,15 @@ function App() {
               {isProcessingPayment ? (
                 <>
                   <Spinner className="h-4 w-4" />
-                  Elaborazione pagamento…
+                  Processing payment…
                 </>
               ) : phase.kind === 'submitting' ? (
                 <>
                   <Spinner className="h-4 w-4" />
-                  Attesa conferma da {selectedChain?.name ?? 'rete'}…
+                  Awaiting confirmation from {selectedChain?.name ?? 'network'}…
                 </>
               ) : (
-                `Paga $${totalUsd.toFixed(2)} e Notarizza`
+                `Pay $${totalUsd.toFixed(2)} and notarize`
               )}
             </button>
           </div>
@@ -887,7 +885,7 @@ function App() {
             role="alert"
             className="mt-6 rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-3 text-sm text-neutral-700"
           >
-            <span className="font-semibold text-neutral-900">Errore:</span>{' '}
+            <span className="font-semibold text-neutral-900">Error:</span>{' '}
             {phase.message}
             {phase.hash === '' && (
               <button
@@ -895,7 +893,7 @@ function App() {
                 onClick={reset}
                 className="ml-3 font-medium text-neutral-900 underline underline-offset-2"
               >
-                Riprova
+                Retry
               </button>
             )}
           </div>
@@ -916,7 +914,7 @@ function App() {
               >
                 <path d="M20 6 9 17l-5-5" />
               </svg>
-              <h3 className="text-sm font-semibold">Transazione confermata</h3>
+              <h3 className="text-sm font-semibold">Transaction confirmed</h3>
             </div>
             <p className="mt-2 break-all font-mono text-xs text-neutral-500">
               {phase.result.tx_hash}
@@ -929,7 +927,7 @@ function App() {
                   rel="noopener noreferrer"
                   className="font-medium text-neutral-900 underline underline-offset-2 hover:text-neutral-600"
                 >
-                  Verifica sull'explorer
+                  Verify on the explorer
                 </a>
               )}
               <button
@@ -937,7 +935,7 @@ function App() {
                 onClick={reset}
                 className="text-neutral-500 hover:text-neutral-900"
               >
-                Notarizza un altro documento
+                Notarize another document
               </button>
             </div>
           </div>
@@ -953,8 +951,8 @@ function App() {
           PoC Ancorhash ·{' '}
           {selectedChain
             ? `${selectedChain.name} (chain_id ${selectedChain.chain_id})`
-            : 'nessuna rete selezionata'}{' '}
-          · Swarm + relayer gas-sponsored
+            : 'no network selected'}{' '}
+          · Swarm + gas-sponsored relayer
         </footer>
       </main>
     </div>

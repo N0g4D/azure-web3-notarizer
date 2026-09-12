@@ -5,15 +5,15 @@ import type { NotarizationRecord } from '../lib/arkiv'
 import type { NotarizeResponse } from '../lib/api'
 
 /**
- * Prova della Mission 02, dal vivo.
+ * The Mission 02 proof, live.
  *
- * La stessa identica query gira a intervalli: prima della scadenza restituisce
- * l'entità, dopo non restituisce nulla. Nessuna chiamata di Delete, nessun job:
- * a cambiare è solo il fatto che il blocco di scadenza è passato.
+ * The exact same query runs on an interval: before expiry it returns the
+ * entity, after it returns nothing. No Delete call, no job — the only thing
+ * that changed is that the expiry block went past.
  *
- * Si fa POLLING e non una sleep: dormire esattamente 60 s e interrogare una
- * volta sola può cadere dal lato sbagliato del confine. Così registriamo il
- * PRIMO blocco in cui l'entità sparisce, che è anche una prova migliore.
+ * It POLLS rather than sleeping: sleeping exactly 60 s and querying once can
+ * land on the wrong side of the boundary. Polling records the FIRST block at
+ * which the entity disappears, which is also better evidence.
  */
 const POLL_MS = 4000
 
@@ -48,14 +48,14 @@ export function ArkivRecordPanel({
       setRecord(present ? found[0] : null)
       setError(null)
       setObservations((prev) => {
-        // Si annota solo un CAMBIO di stato: la riga che interessa è quella
-        // in cui l'entità smette di essere restituita.
+        // Only a CHANGE of state is recorded: the row that matters is the one
+        // where the entity stops being returned.
         const last = prev[prev.length - 1]
         if (last && last.present === present) return prev
         return [...prev, { atBlock: currentHead, present, at: new Date() }]
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Query Arkiv fallita.')
+      setError(e instanceof Error ? e.message : 'Arkiv query failed.')
     }
   }, [documentHash])
 
@@ -76,22 +76,22 @@ export function ArkivRecordPanel({
       ? record.expiresAtBlock - head
       : null
 
-  // Se la scrittura è fallita non c'è nulla da osservare: mostrarlo come
-  // "non nell'indice" sarebbe indistinguibile da una scadenza avvenuta, e in
-  // demo renderebbe illeggibile la prova della Mission 02.
+  // If the write failed there is nothing to observe: rendering it as "not in
+  // the index" would be indistinguishable from a genuine expiry, and in a demo
+  // that makes the Mission 02 proof unreadable.
   if (!result.arkiv_indexed) {
     return (
       <section className="rounded-lg border border-neutral-400 bg-neutral-50 p-5">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold">Indice Arkiv</h3>
+          <h3 className="text-sm font-semibold">Arkiv index</h3>
           <span className="shrink-0 rounded-full border border-neutral-400 px-2.5 py-0.5 text-[11px] font-medium text-neutral-700">
-            indicizzazione FALLITA
+            INDEXING FAILED
           </span>
         </div>
         <p className="mt-3 text-xs leading-relaxed text-neutral-700">
-          L'entità Arkiv non è mai stata creata, quindi non c'è nessuna
-          scadenza da osservare. Questo <strong>non</strong> è il caso della
-          Mission 02: lì l'entità esiste e sparisce da sola.
+          The Arkiv entity was never created, so there is no expiry to
+          observe. This is <strong>not</strong> the Mission 02 case: there the
+          entity exists and disappears on its own.
         </p>
         {result.arkiv_error && (
           <p className="mt-3 break-words rounded-md border border-neutral-200 bg-white p-3 font-mono text-[11px] leading-relaxed text-neutral-700">
@@ -102,9 +102,9 @@ export function ArkivRecordPanel({
           </p>
         )}
         <p className="mt-3 text-xs text-neutral-500">
-          La notarizzazione resta comunque VALIDA: l'ancora on-chain esiste
-          (tx {result.tx_hash.slice(0, 12)}…). L'indice è ricostruibile senza
-          toccare la blockchain.
+          The notarization is still VALID: the on-chain anchor exists
+          (tx {result.tx_hash.slice(0, 12)}…). The index can be rebuilt without
+          touching the chain.
         </p>
       </section>
     )
@@ -113,7 +113,7 @@ export function ArkivRecordPanel({
   return (
     <section className="rounded-lg border border-neutral-200 p-5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Indice Arkiv (Mission 02)</h3>
+        <h3 className="text-sm font-semibold">Arkiv index — Mission 02</h3>
         <span
           className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
             record
@@ -121,14 +121,14 @@ export function ArkivRecordPanel({
               : 'border-neutral-200 text-neutral-500'
           }`}
         >
-          {record ? 'presente nell’indice' : 'non restituita'}
+          {record ? 'in the index' : 'not returned'}
         </span>
       </div>
 
       {!ARKIV_CREATOR_ADDRESS && (
         <p className="mt-3 text-xs text-neutral-500">
-          VITE_ARKIV_CREATOR_ADDRESS non configurato: la query non è ancorata a
-          createdBy(), quindi potrebbe restituire entità scritte da altri.
+          VITE_ARKIV_CREATOR_ADDRESS is not set: the query is not anchored on
+          createdBy(), so it may return entities written by someone else.
         </p>
       )}
 
@@ -143,21 +143,21 @@ export function ArkivRecordPanel({
             </dd>
           </div>
           <div className="flex gap-2">
-            <dt className="w-32 shrink-0 text-neutral-500">Scade al blocco</dt>
+            <dt className="w-32 shrink-0 text-neutral-500">Expires at block</dt>
             <dd className="font-mono text-neutral-700">
               {record.expiresAtBlock?.toString() ?? 'n/d'}
               {blocksLeft !== null && (
                 <span className="ml-2 text-neutral-400">
                   {blocksLeft > 0n
-                    ? `fra ${blocksLeft.toString()} blocchi (~${Math.round(Number(blocksLeft) * 2)} s)`
-                    : 'scaduto'}
+                    ? `in ${blocksLeft.toString()} blocks (~${Math.round(Number(blocksLeft) * 2)} s)`
+                    : 'expired'}
                 </span>
               )}
             </dd>
           </div>
           {record.payload?.tx_hash != null && (
             <div className="flex gap-2">
-              <dt className="w-32 shrink-0 text-neutral-500">Ancora RWA</dt>
+              <dt className="w-32 shrink-0 text-neutral-500">RWA anchor</dt>
               <dd className="break-all font-mono text-neutral-700">
                 {String(record.payload.tx_hash)}
               </dd>
@@ -166,10 +166,10 @@ export function ArkivRecordPanel({
         </dl>
       ) : (
         <p className="mt-3 text-xs leading-relaxed text-neutral-700">
-          La stessa query non restituisce più l’entità.{' '}
+          The same query no longer returns the entity.{' '}
           {observations.some((o) => o.present)
-            ? 'È SCADUTA DA SOLA: nessuna chiamata di Delete è stata mai effettuata.'
-            : 'L’entità è stata scritta correttamente, quindi o è già scaduta o non è ancora indicizzata: lascia girare il polling.'}
+            ? 'IT EXPIRED ON ITS OWN — no Delete call was ever made.'
+            : 'The entity was written successfully, so it has either expired already or is not indexed yet: leave the polling running.'}
         </p>
       )}
 
@@ -182,10 +182,10 @@ export function ArkivRecordPanel({
           {isPolling ? (
             <>
               <Spinner className="h-3.5 w-3.5" />
-              Polling attivo…
+              Polling…
             </>
           ) : (
-            'Osserva la scadenza'
+            'Watch it expire'
           )}
         </button>
         <button
@@ -193,7 +193,7 @@ export function ArkivRecordPanel({
           onClick={() => void poll()}
           className="text-xs text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
         >
-          esegui la query ora
+          run the query now
         </button>
         {head !== null && (
           <span className="ml-auto font-mono text-[11px] text-neutral-400">
@@ -205,13 +205,13 @@ export function ArkivRecordPanel({
       {observations.length > 0 && (
         <div className="mt-4 rounded-md border border-neutral-200 bg-neutral-50 p-3">
           <p className="text-[11px] font-medium text-neutral-500">
-            Transizioni osservate — stessa query, nessun Delete
+            Observed transitions — same query, no Delete call
           </p>
           <ul className="mt-2 space-y-1 font-mono text-[11px] text-neutral-700">
             {observations.map((o) => (
               <li key={o.atBlock.toString()}>
-                blocco {o.atBlock.toString()} · {o.at.toLocaleTimeString()} ·{' '}
-                {o.present ? 'presente' : 'NON restituita'}
+                block {o.atBlock.toString()} · {o.at.toLocaleTimeString()} ·{' '}
+                {o.present ? 'returned' : 'NOT returned'}
               </li>
             ))}
           </ul>

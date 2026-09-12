@@ -1,11 +1,12 @@
 /**
- * Percorso di LETTURA di Arkiv: query dell'indice pubblico direttamente dal
- * browser. Architettura ibrida (a.txt B5): le scritture le firma il relayer
- * lato server, le letture girano qui.
+ * Arkiv READ path: queries against the public index, straight from the
+ * browser. Hybrid architecture: the relayer signs writes server-side, reads
+ * run here.
  *
- * Il public client non firma nulla e non ha bisogno di chiavi, quindi è sicuro
- * nel bundle. L'ACCESS KEY NON VA MESSA QUI: finirebbe nelle richieste di rete
- * di chiunque apra la pagina. Il frontend usa l'RPC pubblico rate-limited.
+ * The public client signs nothing and needs no keys, so it is safe to ship in
+ * the bundle. THE ACCESS KEY DOES NOT BELONG HERE: it would appear in the
+ * network requests of anyone who opens the page. The frontend uses the
+ * rate-limited public RPC.
  */
 import { createPublicClient } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
@@ -13,22 +14,22 @@ import { bytes32, str, u64 } from '@arkiv-network/sdk/attr'
 import { eq, gte, lt } from '@arkiv-network/sdk/query'
 import { http } from 'viem'
 
-/** Deve restare allineato a SCHEMA_VERSION del writer (arkiv/schema.md §2). */
+/** Must stay aligned with SCHEMA_VERSION in the writer (arkiv/schema.md §2). */
 export const SCHEMA_VERSION = 1
 
 /**
- * Wallet che FIRMA le entità Arkiv. Configurazione condivisa fra i due
- * runtime: il backend possiede la chiave, il frontend solo l'indirizzo.
+ * Wallet that SIGNS the Arkiv entities. Shared configuration across the two
+ * runtimes: the backend holds the key, the frontend only the address.
  *
- * Serve perché ogni query si ancora a createdBy(). `app: "ancorhash"` è una
- * stringa che chiunque può copiare sulle proprie entità; `$creator` no, non è
- * falsificabile. Senza questa ancora un terzo potrebbe iniettare entità che la
- * nostra UI mostrerebbe come autentiche.
+ * It matters because every query anchors on createdBy(). `app: "ancorhash"`
+ * is a string anyone can copy onto their own entities; `$creator` cannot be
+ * forged. Without that anchor a third party could inject entities our own UI
+ * would display as genuine.
  */
 export const ARKIV_CREATOR_ADDRESS = import.meta.env
   .VITE_ARKIV_CREATOR_ADDRESS as `0x${string}` | undefined
 
-/** RPC Tiramisu. Vuoto = endpoint pubblico di default. */
+/** Tiramisu RPC. Empty = the default public endpoint. */
 const ARKIV_RPC_URL = import.meta.env.VITE_ARKIV_RPC_URL as string | undefined
 
 export const publicClient = createPublicClient({
@@ -37,24 +38,24 @@ export const publicClient = createPublicClient({
 })
 
 /**
- * 64 hex senza prefisso -> Hex `0x` minuscolo.
+ * 64 hex without a prefix -> lowercase `0x` Hex.
  *
- * DEVE produrre esattamente la stessa forma di `toHex32` nel writer Node.
- * Un disallineamento non dà errore: su Arkiv un valore che non combacia
- * restituisce semplicemente zero risultati, in silenzio. È il tipo di bug che
- * si scopre in demo. Il test cross-runtime in `test/hex32.test.ts` confronta
- * le due implementazioni eseguendole entrambe.
+ * MUST produce exactly the same form as `toHex32` in the Node writer. A
+ * mismatch raises no error: on Arkiv a value that does not match simply
+ * returns zero results, silently. That is the kind of bug you discover during
+ * a demo. The cross-runtime test in `test/hex32.test.ts` compares the two
+ * implementations by running both.
  */
 export function toHex32(value: string): `0x${string}` {
   if (!/^[0-9a-fA-F]{64}$/.test(value)) {
     throw new Error(
-      `Atteso un valore di 64 caratteri hex senza 0x, ricevuti ${value.length}.`,
+      `Expected 64 hex characters without 0x, got ${value.length}.`,
     )
   }
   return `0x${value.toLowerCase()}` as `0x${string}`
 }
 
-/** Ancora comune a ogni query: namespace + tipo + creatore verificabile. */
+/** Anchor shared by every query: namespace + type + verifiable creator. */
 function anchored() {
   const builder = publicClient
     .select({
@@ -104,9 +105,9 @@ function toRecord(entity: any): NotarizationRecord {
 }
 
 /**
- * Q1 di schema.md §7 — questo documento è già notarizzato da noi?
- * È anche la query che prova la Mission 02: prima della scadenza torna
- * l'entità, dopo non torna nulla, senza alcuna chiamata di Delete.
+ * Q1 from schema.md §7 — has this document already been notarized by us?
+ * It is also the query that proves Mission 02: before expiry it returns the
+ * entity, after it returns nothing, with no Delete call in between.
  */
 export async function findByDocumentHash(
   documentHash: string,
@@ -117,7 +118,7 @@ export async function findByDocumentHash(
   return page.entities.map(toRecord)
 }
 
-/** Q2 — record di un'organizzazione in una finestra temporale. */
+/** Q2 — an organisation's records within a time window. */
 export async function findByOrgSince(
   org: string,
   sinceMs: number,
@@ -132,7 +133,7 @@ export async function findByOrgSince(
   return page.entities.map(toRecord)
 }
 
-/** Q3 — cosa scade entro N blocchi. Filtra sull'attributo di sistema $expiresAt. */
+/** Q3 — what expires within N blocks. Filters on the $expiresAt system attribute. */
 export async function findExpiringWithin(
   blocks: bigint,
 ): Promise<{ head: bigint; records: NotarizationRecord[] }> {
@@ -143,7 +144,7 @@ export async function findExpiringWithin(
   return { head, records: page.entities.map(toRecord) }
 }
 
-/** Altezza corrente della catena: serve al conto alla rovescia della demo. */
+/** Current chain height: drives the demo countdown. */
 export async function getHead(): Promise<bigint> {
   return publicClient.getBlockNumber()
 }

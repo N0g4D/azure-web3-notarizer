@@ -1,38 +1,38 @@
 /**
- * Integrazione Swarm tramite Swarm ID (@snaha/swarm-id): il documento viene
- * cifrato e caricato su Swarm direttamente dal browser. Swarm ID firma i
- * postage stamp lato client, quindi non c'è nessun Bee node da gestire.
+ * Swarm integration via Swarm ID (@snaha/swarm-id): the document is encrypted
+ * and uploaded to Swarm straight from the browser. Swarm ID signs postage
+ * stamps client-side, so there is no Bee node to run.
  *
- * Pattern Zero Data Leakage: su Swarm finiscono solo byte cifrati e il file
- * in chiaro non lascia mai il dispositivo.
+ * Zero Data Leakage: only encrypted bytes reach Swarm, and the plaintext file
+ * never leaves the device.
  *
- * ⚠️ Con `encrypt: true` la reference è di 128 caratteri hex — 32 byte di
- * indirizzo seguiti da 32 byte di chiave di decifratura. La reference *è* il
- * segreto: non va mai pubblicata su un registro pubblico. Verso Arkiv e la
- * blockchain (Fasi 2 e 3) va il solo indirizzo, via `toPublicAddress`.
+ * ⚠️ With `encrypt: true` the reference is 128 hex characters — 32 bytes of
+ * address followed by 32 bytes of decryption key. The reference *is* the
+ * secret: it must never be published to a public registry. Only the address
+ * goes to Arkiv and to the chain (Phases 2 and 3), via `toPublicAddress`.
  */
 import { SwarmIdClient } from '@snaha/swarm-id'
 import type { ConnectionInfo, PostageBatch } from '@snaha/swarm-id'
 
 export type { ConnectionInfo, PostageBatch }
 
-/** Origin dell'iframe di identità Swarm ID (override per self-hosting). */
+/** Origin of the Swarm ID identity iframe (override when self-hosting). */
 const SWARM_ID_ORIGIN =
   (import.meta.env.VITE_SWARM_ID_ORIGIN as string | undefined) ??
   'https://swarm-id.snaha.net'
 
 /**
- * Gateway sovvenzionato opzionale: permette l'upload agli utenti senza
- * postage stamp (è il gateway a mettere il francobollo lato server).
+ * Optional subsidised gateway: lets users without a postage stamp upload
+ * anyway, with the gateway doing the stamping server-side.
  */
 const SWARM_GATEWAY_URL = import.meta.env.VITE_SWARM_GATEWAY_URL as
   | string
   | undefined
 
-/** Lunghezza dell'indirizzo Swarm in hex: 32 byte, chiave esclusa. */
+/** Swarm address length in hex: 32 bytes, key excluded. */
 const SWARM_ADDRESS_HEX_LENGTH = 64
 
-/** Errore di dominio Swarm, con messaggi già pronti per la UI. */
+/** Swarm domain error, carrying messages ready for the UI. */
 export class SwarmError extends Error {
   constructor(message: string) {
     super(message)
@@ -41,8 +41,8 @@ export class SwarmError extends Error {
 }
 
 /**
- * Client Swarm ID per Ancorhash. Va creato una sola volta per sessione:
- * `initialize()` monta un iframe nascosto, `destroy()` lo smonta.
+ * Swarm ID client for Ancorhash. Create it once per session:
+ * `initialize()` mounts a hidden iframe, `destroy()` tears it down.
  */
 export function createSwarmClient(
   onConnectionChange: (info: ConnectionInfo) => void,
@@ -51,7 +51,7 @@ export function createSwarmClient(
     iframeOrigin: SWARM_ID_ORIGIN,
     metadata: {
       name: 'Ancorhash',
-      description: 'Confidential RWA Vault — documenti cifrati su Swarm',
+      description: 'Confidential RWA Vault — encrypted documents on Swarm',
     },
     onConnectionChange,
     ...(SWARM_GATEWAY_URL ? { subsidisedGatewayUrl: SWARM_GATEWAY_URL } : {}),
@@ -59,8 +59,8 @@ export function createSwarmClient(
 }
 
 /**
- * Stato del postage stamp effettivamente associato all'identità connessa.
- * `checked: false` significa che non lo sappiamo ancora, non che manchi.
+ * State of the postage stamp actually attached to the connected identity.
+ * `checked: false` means we do not know yet, not that none exists.
  */
 export interface StampStatus {
   checked: boolean
@@ -71,12 +71,12 @@ export interface StampStatus {
 export const UNKNOWN_STAMP: StampStatus = { checked: false }
 
 /**
- * Interroga il postage stamp dell'identità connessa.
+ * Queries the postage stamp of the connected identity.
  *
- * Esiste perché `canUpload` non è affidabile: lo abbiamo visto restare true
- * con un'identità senza stamp utilizzabile, e il fallimento è arrivato 30
- * secondi dopo come timeout opaco (swarm/friction.md S-02). `PostageBatch`
- * porta `exists` e `usable`, che sono la verità.
+ * This exists because `canUpload` is not trustworthy: we saw it stay true for
+ * an identity with no usable stamp, and the failure surfaced 30 seconds later
+ * as an opaque timeout (swarm/friction.md S-02). `PostageBatch` carries
+ * `exists` and `usable`, which are the truth.
  */
 export async function fetchStampStatus(
   client: SwarmIdClient,
@@ -89,61 +89,60 @@ export async function fetchStampStatus(
       checked: true,
       error:
         error instanceof Error
-          ? `Stato del postage stamp non leggibile: ${error.message}`
-          : 'Stato del postage stamp non leggibile.',
+          ? `Postage stamp status unreadable: ${error.message}`
+          : 'Postage stamp status unreadable.',
     }
   }
 }
 
 /**
- * Perché l'utente non può caricare, in italiano. Null solo quando lo storage
- * è davvero utilizzabile.
+ * Why the user cannot upload. Null only when storage is genuinely usable.
  *
- * NON ci si fida del solo `canUpload`: serve anche un batch che esista e sia
- * usable. Meglio un "non disponibile" prudente che un "Pronto" che mente e
- * fa scoprire il problema 30 secondi dopo, a upload iniziato.
+ * `canUpload` alone is NOT trusted: a batch must also exist and be usable. A
+ * cautious "unavailable" beats a "Ready" that lies and only reveals the
+ * problem 30 seconds into an upload.
  */
 export function uploadUnavailableReason(
   info: ConnectionInfo,
   stamp: StampStatus = UNKNOWN_STAMP,
 ): string | null {
-  if (!info.identity) return 'Connetti Swarm ID per cifrare il documento.'
+  if (!info.identity) return 'Connect Swarm ID to encrypt the document.'
 
   if (!info.canUpload) {
     if (info.uploadUnavailableReason === 'no-stamp') {
-      return 'Nessun postage stamp sul tuo account Swarm: riscatta un gift code per caricare.'
+      return 'No postage stamp on your Swarm account: redeem a gift code to upload.'
     }
     if (info.uploadUnavailableReason === 'stamper-failed') {
-      return 'Firma del postage stamp fallita: riprova tra qualche istante.'
+      return 'Postage stamp signing failed: try again in a moment.'
     }
-    return 'Upload su Swarm non disponibile con questo account.'
+    return 'Swarm upload is not available for this account.'
   }
 
-  // Da qui in poi canUpload è true, ma non basta.
-  if (!stamp.checked) return 'Verifica del postage stamp in corso…'
+  // From here on canUpload is true, which is not enough.
+  if (!stamp.checked) return 'Checking the postage stamp…'
   if (stamp.error) return stamp.error
   if (!stamp.batch || !stamp.batch.exists) {
-    return 'Swarm ID si dichiara pronto ma non risulta alcun postage stamp: senza stamp l\'upload andrebbe in timeout.'
+    return 'Swarm ID reports ready but no postage stamp is present: without one the upload would time out.'
   }
   if (!stamp.batch.usable) {
-    return 'Il postage stamp esiste ma non è ancora utilizzabile: attendi qualche blocco dopo il riscatto.'
+    return 'The postage stamp exists but is not usable yet: wait a few blocks after redeeming.'
   }
   return null
 }
 
-/** Riassunto leggibile del batch per il pannello. */
+/** Human-readable batch summary for the panel. */
 export function describeStamp(batch: PostageBatch): string {
   const ttl =
     batch.batchTTL !== undefined && batch.batchTTL > 0
-      ? `, scade tra ~${Math.round(batch.batchTTL / 86_400)} g`
+      ? `, expires in ~${Math.round(batch.batchTTL / 86_400)} d`
       : ''
-  return `depth ${batch.depth}, utilizzo ${batch.utilization}%${ttl}`
+  return `depth ${batch.depth}, utilisation ${batch.utilization}%${ttl}`
 }
 
 /**
- * Cifra il file nel browser e lo carica su Swarm.
- * @returns la reference cifrata di 128 hex — indirizzo + chiave, da trattare
- *          come un segreto.
+ * Encrypts the file in the browser and uploads it to Swarm.
+ * @returns the 128-hex encrypted reference — address + key, to be treated as
+ *          a secret.
  */
 export async function uploadEncrypted(
   client: SwarmIdClient,
@@ -151,9 +150,9 @@ export async function uploadEncrypted(
   stamp: StampStatus,
   onProgress?: (percent: number) => void,
 ): Promise<string> {
-  // Lo stamp verificato è un parametro obbligatorio: con il default
-  // UNKNOWN_STAMP questa guardia bloccherebbe sempre, ed è voluto. Nessun
-  // upload parte senza che qualcuno abbia davvero guardato il batch.
+  // The verified stamp is a required argument: with the UNKNOWN_STAMP default
+  // this guard would always block, and that is deliberate. No upload starts
+  // unless someone has actually looked at the batch.
   const blocked = uploadUnavailableReason(client.connectionInfo, stamp)
   if (blocked !== null) throw new SwarmError(blocked)
 
@@ -172,16 +171,16 @@ export async function uploadEncrypted(
   } catch (error) {
     throw new SwarmError(
       error instanceof Error
-        ? `Upload su Swarm fallito: ${error.message}`
-        : 'Upload su Swarm fallito.',
+        ? `Swarm upload failed: ${error.message}`
+        : 'Swarm upload failed.',
     )
   }
 }
 
 /**
- * Indirizzo pubblico estratto da una reference cifrata: i primi 32 byte,
- * senza la chiave di decifratura. È l'unica parte che può essere resa
- * pubblica (Arkiv, on-chain) senza esporre il contenuto del documento.
+ * Public address extracted from an encrypted reference: the first 32 bytes,
+ * without the decryption key. It is the only part that can be made public
+ * (Arkiv, on-chain) without exposing the document's contents.
  */
 export function toPublicAddress(reference: string): string {
   return reference.slice(0, SWARM_ADDRESS_HEX_LENGTH)
