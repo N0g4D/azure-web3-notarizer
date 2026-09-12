@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Spinner } from './Spinner'
 import { ARKIV_CREATOR_ADDRESS, findByDocumentHash, getHead } from '../lib/arkiv'
 import type { NotarizationRecord } from '../lib/arkiv'
+import type { NotarizeResponse } from '../lib/api'
 
 /**
  * Prova della Mission 02, dal vivo.
@@ -22,7 +23,13 @@ type Observation = {
   at: Date
 }
 
-export function ArkivRecordPanel({ documentHash }: { documentHash: string }) {
+export function ArkivRecordPanel({
+  documentHash,
+  result,
+}: {
+  documentHash: string
+  result: NotarizeResponse
+}) {
   const [record, setRecord] = useState<NotarizationRecord | null>(null)
   const [head, setHead] = useState<bigint | null>(null)
   const [observations, setObservations] = useState<Observation[]>([])
@@ -69,6 +76,40 @@ export function ArkivRecordPanel({ documentHash }: { documentHash: string }) {
       ? record.expiresAtBlock - head
       : null
 
+  // Se la scrittura è fallita non c'è nulla da osservare: mostrarlo come
+  // "non nell'indice" sarebbe indistinguibile da una scadenza avvenuta, e in
+  // demo renderebbe illeggibile la prova della Mission 02.
+  if (!result.arkiv_indexed) {
+    return (
+      <section className="rounded-lg border border-neutral-400 bg-neutral-50 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Indice Arkiv</h3>
+          <span className="shrink-0 rounded-full border border-neutral-400 px-2.5 py-0.5 text-[11px] font-medium text-neutral-700">
+            indicizzazione FALLITA
+          </span>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-neutral-700">
+          L'entità Arkiv non è mai stata creata, quindi non c'è nessuna
+          scadenza da osservare. Questo <strong>non</strong> è il caso della
+          Mission 02: lì l'entità esiste e sparisce da sola.
+        </p>
+        {result.arkiv_error && (
+          <p className="mt-3 break-words rounded-md border border-neutral-200 bg-white p-3 font-mono text-[11px] leading-relaxed text-neutral-700">
+            {result.arkiv_error_code && (
+              <span className="font-semibold">[{result.arkiv_error_code}] </span>
+            )}
+            {result.arkiv_error}
+          </p>
+        )}
+        <p className="mt-3 text-xs text-neutral-500">
+          La notarizzazione resta comunque VALIDA: l'ancora on-chain esiste
+          (tx {result.tx_hash.slice(0, 12)}…). L'indice è ricostruibile senza
+          toccare la blockchain.
+        </p>
+      </section>
+    )
+  }
+
   return (
     <section className="rounded-lg border border-neutral-200 p-5">
       <div className="flex items-center justify-between gap-3">
@@ -80,7 +121,7 @@ export function ArkivRecordPanel({ documentHash }: { documentHash: string }) {
               : 'border-neutral-200 text-neutral-500'
           }`}
         >
-          {record ? 'presente nell’indice' : 'non nell’indice'}
+          {record ? 'presente nell’indice' : 'non restituita'}
         </span>
       </div>
 
@@ -124,9 +165,11 @@ export function ArkivRecordPanel({ documentHash }: { documentHash: string }) {
           )}
         </dl>
       ) : (
-        <p className="mt-3 text-xs text-neutral-500">
-          La query non restituisce l’entità. Se prima c’era, è scaduta da sola:
-          nessuna chiamata di Delete è stata mai effettuata.
+        <p className="mt-3 text-xs leading-relaxed text-neutral-700">
+          La stessa query non restituisce più l’entità.{' '}
+          {observations.some((o) => o.present)
+            ? 'È SCADUTA DA SOLA: nessuna chiamata di Delete è stata mai effettuata.'
+            : 'L’entità è stata scritta correttamente, quindi o è già scaduta o non è ancora indicizzata: lascia girare il polling.'}
         </p>
       )}
 

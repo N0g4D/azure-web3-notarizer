@@ -7,6 +7,8 @@ namespace Ancorhash.Core.Models;
 /// <param name="ChainId">Chain ID EIP-155 della rete su cui è avvenuto il broadcast.</param>
 /// <param name="ArkivEntityKey">Chiave a 32 byte dell'entità Arkiv corrispondente.</param>
 /// <param name="ArkivExpiresAtBlock">Blocco di scadenza dell'entità, riletto dalla ricevuta.</param>
+/// <param name="ArkivErrorCode">Codice macchina del fallimento di indicizzazione, se avvenuto.</param>
+/// <param name="ArkivError">Motivo leggibile del fallimento di indicizzazione, se avvenuto.</param>
 /// <param name="ArkivIndexed">
 /// False se l'ancora RWA è andata a buon fine ma l'indicizzazione Arkiv no.
 /// La notarizzazione resta VALIDA: la verità è la transazione on-chain.
@@ -18,4 +20,6 @@ public sealed record NotarizationResult(
     int ChainId,
     string ArkivEntityKey,
     ulong ArkivExpiresAtBlock,
-    bool ArkivIndexed);
+    bool ArkivIndexed,
+    string? ArkivErrorCode = null,
+    string? ArkivError = null);

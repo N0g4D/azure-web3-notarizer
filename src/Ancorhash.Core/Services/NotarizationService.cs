@@ -146,7 +146,9 @@ public sealed partial class NotarizationService(
                 command.ChainId,
                 ArkivEntityKey: string.Empty,
                 ArkivExpiresAtBlock: 0,
-                ArkivIndexed: false);
+                ArkivIndexed: false,
+                ArkivErrorCode: ex.Code,
+                ArkivError: ex.Message);
         }
     }
 

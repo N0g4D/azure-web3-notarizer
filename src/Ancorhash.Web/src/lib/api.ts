@@ -32,6 +32,19 @@ export interface NotarizeResponse {
   doc_hash: string
   tx_hash: string
   chain_id: number
+  /** Chiave dell'entità Arkiv. Vuota se l'indicizzazione è fallita. */
+  arkiv_entity_key: string
+  /** Blocco di scadenza dell'entità. Stringa: è un uint64. */
+  arkiv_expires_at_block: string
+  /**
+   * False se l'ancora on-chain è riuscita ma la scrittura su Arkiv no.
+   * La notarizzazione resta valida: la prova è la transazione.
+   */
+  arkiv_indexed: boolean
+  /** Codice macchina del fallimento (writer_not_found, missing_key, …). */
+  arkiv_error_code?: string
+  /** Motivo leggibile: distingue "scrittura fallita" da "entità scaduta". */
+  arkiv_error?: string
 }
 
 export interface Chain {

@@ -945,7 +945,7 @@ function App() {
 
         {phase.kind === 'success' && (
           <div className="mt-4">
-            <ArkivRecordPanel documentHash={phase.hash} />
+            <ArkivRecordPanel documentHash={phase.hash} result={phase.result} />
           </div>
         )}
 

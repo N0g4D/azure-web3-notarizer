@@ -36,6 +36,18 @@ public sealed record NotarizeHttpResponse
     [JsonPropertyName("arkiv_indexed")]
     public required bool ArkivIndexed { get; init; }
 
+    /// <summary>Codice macchina del fallimento di indicizzazione (writer_not_found, missing_key, ...).</summary>
+    [JsonPropertyName("arkiv_error_code")]
+    public string? ArkivErrorCode { get; init; }
+
+    /// <summary>
+    /// Motivo leggibile del fallimento. Serve alla UI per distinguere
+    /// "scrittura fallita" da "entità scaduta": senza, i due casi sono
+    /// indistinguibili e la prova della Mission 02 diventa illeggibile.
+    /// </summary>
+    [JsonPropertyName("arkiv_error")]
+    public string? ArkivError { get; init; }
+
     public static NotarizeHttpResponse From(NotarizationResult result) => new()
     {
         DocumentId = result.DocumentId,
@@ -45,5 +57,7 @@ public sealed record NotarizeHttpResponse
         ArkivEntityKey = result.ArkivEntityKey,
         ArkivExpiresAtBlock = result.ArkivExpiresAtBlock.ToString(),
         ArkivIndexed = result.ArkivIndexed,
+        ArkivErrorCode = result.ArkivErrorCode,
+        ArkivError = result.ArkivError,
     };
 }

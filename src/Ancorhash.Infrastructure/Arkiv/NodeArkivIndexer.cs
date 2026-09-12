@@ -38,13 +38,7 @@ public sealed class NodeArkivIndexer(
         string anchorTransactionHash,
         CancellationToken cancellationToken = default)
     {
-        var scriptPath = Path.GetFullPath(_options.ScriptPath);
-        if (!File.Exists(scriptPath))
-        {
-            throw new ArkivIndexingException(
-                "writer_not_found",
-                $"Writer Arkiv non trovato in {scriptPath}. Verificare Arkiv:ScriptPath.");
-        }
+        var scriptPath = ResolveScriptPath();
 
         if (string.IsNullOrWhiteSpace(_options.PrivateKey))
         {
@@ -187,6 +181,73 @@ public sealed class NodeArkivIndexer(
             output.TxHash ?? string.Empty,
             expiresAtBlock,
             output.LifetimeBlocks);
+    }
+
+    /// <summary>
+    /// Risolve ScriptPath in modo robusto.
+    ///
+    /// Un path relativo NON puo' essere risolto contro la working directory:
+    /// la Functions host gira dalla cartella di output del build, non da
+    /// quella del progetto, quindi "../Ancorhash.Infrastructure/..." finiva in
+    /// bin/Ancorhash.Infrastructure/... e il file non esisteva. Il fallimento
+    /// era silenzioso perche' NotarizationService degrada apposta.
+    ///
+    /// Si provano piu' candidati e si risale l'albero: quello che conta e' che
+    /// l'errore elenchi TUTTO cio' che e' stato tentato.
+    /// </summary>
+    private string ResolveScriptPath()
+    {
+        var configured = _options.ScriptPath;
+        var attempted = new List<string>();
+
+        if (Path.IsPathRooted(configured))
+        {
+            attempted.Add(configured);
+            if (File.Exists(configured))
+            {
+                logger.LogDebug("Writer Arkiv risolto (assoluto): {Path}", configured);
+                return configured;
+            }
+        }
+        else
+        {
+            foreach (var root in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+            {
+                var candidate = Path.GetFullPath(Path.Combine(root, configured));
+                attempted.Add(candidate);
+                if (File.Exists(candidate))
+                {
+                    logger.LogDebug("Writer Arkiv risolto: {Path}", candidate);
+                    return candidate;
+                }
+            }
+
+            // Risalita: da bin/output fino alla radice del repo, cercando il
+            // percorso canonico del writer.
+            const string canonical = "Ancorhash.Infrastructure/ArkivWriter/src/write-entity.mjs";
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir is not null)
+            {
+                var candidate = Path.GetFullPath(
+                    Path.Combine(dir.FullName, canonical.Replace('/', Path.DirectorySeparatorChar)));
+                attempted.Add(candidate);
+                if (File.Exists(candidate))
+                {
+                    logger.LogInformation(
+                        "Writer Arkiv trovato risalendo l'albero: {Path}. "
+                        + "Conviene impostare Arkiv:ScriptPath a questo valore assoluto.",
+                        candidate);
+                    return candidate;
+                }
+                dir = dir.Parent;
+            }
+        }
+
+        throw new ArkivIndexingException(
+            "writer_not_found",
+            $"Writer Arkiv non trovato. Arkiv:ScriptPath = '{configured}'. "
+            + $"Percorsi tentati: {string.Join(" | ", attempted)}. "
+            + "Impostare Arkiv:ScriptPath a un percorso assoluto.");
     }
 
     private static void TryKill(Process process)
