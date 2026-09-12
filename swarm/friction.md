@@ -87,6 +87,49 @@ it moves the failure from setup time to upload time.
 
 ---
 
+## S-03 · The public gateway answers 200 with its own page for any address
+
+**Severity:** medium — a failed retrieval is indistinguishable from a success.
+
+`https://gateway.ethswarm.org/bzz/<address>/` returns **HTTP 200** with a
+960-byte HTML shell for anything it cannot resolve. Not a 404, not a 5xx, and
+no header that distinguishes the two.
+
+**Reproduce** — three addresses, including all-zeroes, all identical:
+
+```bash
+for h in 959daf94110f4e2ec69c1ebd7a5182489d3f06aa1384e215b4cf859822a4cfe8 \
+         0000000000000000000000000000000000000000000000000000000000000000 \
+         ababababababababababababababababababababababababababababababababab; do
+  curl -sL -o /tmp/x -w "%{http_code} %{size_download}\n" \
+    "https://gateway.ethswarm.org/bzz/$h/"
+done
+# 200 960
+# 200 960
+# 200 960   <- byte-identical HTML, Content-Type: text/html
+```
+
+**Why it matters for us.** Our verify page takes a 128-hex reference and opens
+the document. Opening blindly means a viewer with a wrong, truncated or
+expired reference lands on an anonymous error page and concludes the *product*
+is broken. During a demo that is the worst possible failure.
+
+**Workaround, now in the code:** fetch first and treat a `text/html` response
+as unresolved, since a real upload carries its own content type. It works, but
+it is a heuristic — a genuinely HTML-typed document would be misreported — and
+we would rather branch on a status code.
+
+**Suggestion:** return 404 for an unresolvable address, or set a header the
+client can read. Either removes the guesswork.
+
+**Also observed:** the public gateway is read-only. `POST /bzz` with a valid
+`swarm-postage-batch-id` returns **405**, so uploads must go through Swarm ID
+or a Bee node — reasonable, but it is not stated where a developer meets it.
+
+**Observed:** 2026-09-13, `gateway.ethswarm.org`.
+
+---
+
 ## Still to come
 
 - [ ] Behaviour when a batch expires mid-session

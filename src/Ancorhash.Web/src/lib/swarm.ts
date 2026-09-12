@@ -29,9 +29,6 @@ const SWARM_GATEWAY_URL = import.meta.env.VITE_SWARM_GATEWAY_URL as
   | string
   | undefined
 
-/** Swarm address length in hex: 32 bytes, key excluded. */
-const SWARM_ADDRESS_HEX_LENGTH = 64
-
 /** Swarm domain error, carrying messages ready for the UI. */
 export class SwarmError extends Error {
   constructor(message: string) {
@@ -177,11 +174,14 @@ export async function uploadEncrypted(
   }
 }
 
-/**
- * Public address extracted from an encrypted reference: the first 32 bytes,
- * without the decryption key. It is the only part that can be made public
- * (Arkiv, on-chain) without exposing the document's contents.
- */
-export function toPublicAddress(reference: string): string {
-  return reference.slice(0, SWARM_ADDRESS_HEX_LENGTH)
-}
+// Reference handling (address vs full reference, gateway URL) lives in
+// `swarm-reference.ts`: it is pure, and this module cannot be imported under
+// Node because the Swarm ID SDK touches `window` at import time.
+export {
+  classifyReference,
+  toGatewayUrl,
+  toPublicAddress,
+  SWARM_ADDRESS_HEX_LENGTH,
+  SWARM_REFERENCE_HEX_LENGTH,
+} from './swarm-reference'
+export type { ReferenceShape } from './swarm-reference'

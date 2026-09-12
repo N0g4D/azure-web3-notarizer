@@ -7,6 +7,7 @@ import {
   findByDocumentHash,
   queryRegistry,
 } from '../lib/arkiv'
+import { classifyReference, probeReference, toGatewayUrl } from '../lib/swarm-reference'
 import type { NotarizationRecord } from '../lib/arkiv'
 
 /**
@@ -167,6 +168,28 @@ export function VerifyPanel() {
     // does not fire a chain of queries against a rate-limited public RPC.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // --- open a document with the full reference ----------------------------
+  const [reference, setReference] = useState('')
+  const [refBusy, setRefBusy] = useState(false)
+  const [refError, setRefError] = useState<string | null>(null)
+  const refShape = classifyReference(reference)
+
+  // Probe before opening: the gateway answers 200 with its own page for any
+  // address it cannot resolve, so a blind window.open would show a viewer an
+  // anonymous error page instead of the document.
+  const openReference = useCallback(async () => {
+    if (refShape.kind !== 'reference') return
+    setRefBusy(true)
+    setRefError(null)
+    const probe = await probeReference(refShape.value)
+    setRefBusy(false)
+    if (!probe.ok) {
+      setRefError(probe.reason)
+      return
+    }
+    window.open(toGatewayUrl(refShape.value), '_blank', 'noopener,noreferrer')
+  }, [refShape])
 
   // --- match a copy (secondary) -------------------------------------------
   const [matchOpen, setMatchOpen] = useState(false)
@@ -397,6 +420,70 @@ export function VerifyPanel() {
           </div>
         </section>
       )}
+
+      {/* Open a document — only possible with the full reference */}
+      <section className="rounded-lg border border-neutral-200 p-5">
+        <h3 className="text-sm font-semibold">Have the full reference?</h3>
+        <p className="mt-2 text-xs leading-relaxed text-neutral-500">
+          None of the rows above link to a document, and that is the design.
+          The registry stores the 64-hex Swarm <em>address</em>: it identifies
+          the encrypted chunk but cannot open it. The second half of a full
+          reference <strong>is</strong> the decryption key, so the index
+          deliberately never holds it. Paste a full 128-hex reference and the
+          document opens — from your browser to the Swarm gateway, never
+          through Ancorhash.
+        </p>
+
+        <div className="mt-3 flex items-end gap-2">
+          <div className="flex-1">
+            <label htmlFor="swarm-ref" className="text-xs font-medium text-neutral-500">
+              Swarm reference (128 hex)
+            </label>
+            <input
+              id="swarm-ref"
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="128 hex characters — address + decryption key"
+              className="mt-1.5 w-full rounded-lg border border-neutral-200 px-3 py-2 font-mono text-xs text-neutral-900 transition-colors hover:border-neutral-400 focus:border-neutral-900 focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={refShape.kind !== 'reference' || refBusy}
+            onClick={() => void openReference()}
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-900 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {refBusy ? <Spinner className="h-3.5 w-3.5" /> : null}
+            Open document
+          </button>
+        </div>
+
+        {refShape.kind === 'address-only' && (
+          <div className="mt-3 rounded-lg border border-neutral-400 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold text-neutral-900">
+              That is an address, not a reference — it cannot open anything.
+            </p>
+            <p className="mt-1.5 text-xs leading-relaxed text-neutral-700">
+              64 hex is exactly what the registry publishes. It names the
+              encrypted chunk on Swarm and stops there: the bytes it points at
+              stay unreadable without the decryption key, which is the missing
+              second half. This is the invariant working, not an input error —
+              if a 64-hex value could open the document, publishing the index
+              would publish every document in it.
+            </p>
+          </div>
+        )}
+
+        {refShape.kind === 'invalid' && reference.trim() !== '' && (
+          <p className="mt-3 text-xs text-neutral-500">{refShape.reason}</p>
+        )}
+
+        {refError && (
+          <p className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-700">
+            {refError}
+          </p>
+        )}
+      </section>
 
       {/* Secondary: the counterparty who already holds a copy */}
       <section className="rounded-lg border border-neutral-200 p-5">
