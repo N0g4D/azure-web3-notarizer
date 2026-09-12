@@ -1,0 +1,37 @@
+{
+    "_comment": [
+        "Copiare in local.settings.json e riempire i segreti. Quel file e' gitignorato.",
+        "Evm__RelayerPrivateKey: wallet relayer, va finanziato con AVAX di test",
+        "  dal faucet Core: https://core.app/tools/testnet-faucet/",
+        "Arkiv__PrivateKey: wallet che firma le entita' Arkiv, test GLM dal faucet",
+        "  Arkiv: https://hub.arkiv.network/faucet",
+        "Nessuna mainnet configurata di proposito: Team1 richiede testnet-only."
+    ],
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "",
+        "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+        "Logging__LogLevel__Default": "Information",
+        "Logging__LogLevel__Ancorhash": "Information",
+        "KeyVault__Uri": "https://kv-ancorhash-dev-001.vault.azure.net/",
+        "AI__Endpoint": "https://ai-ancorhash-dev-001.cognitiveservices.azure.com/",
+        "AI__ApiKey": "",
+        "Turnstile__SecretKey": "1x0000000000000000000000000000000AA",
+        "Evm__RelayerPrivateKey": "",
+        "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+        "Blockchain__Networks__43113__RpcUrl": "https://api.avax-test.network/ext/bc/C/rpc",
+        "Blockchain__Networks__43113__Name": "Avalanche Fuji C-Chain",
+        "Blockchain__Networks__43113__NativeCoinId": "avalanche-2",
+        "Blockchain__Networks__43113__IsTestnet": "true",
+        "Blockchain__Networks__43113__ExplorerTxUrl": "https://testnet.snowtrace.io/tx/",
+        "Arkiv__Enabled": "true",
+        "Arkiv__ScriptPath": "../Ancorhash.Infrastructure/ArkivWriter/src/write-entity.mjs",
+        "Arkiv__TimeoutSeconds": "90",
+        "Arkiv__RpcUrl": "",
+        "Arkiv__PrivateKey": ""
+    },
+    "Host": {
+        "CORS": "http://localhost:5173",
+        "CORSCredentials": false
+    }
+}

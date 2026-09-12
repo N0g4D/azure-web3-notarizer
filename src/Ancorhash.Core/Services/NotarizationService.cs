@@ -86,30 +86,64 @@ public sealed partial class NotarizationService(
             "Notarize: avvio per documento {DocumentId} su chain {ChainId}",
             command.DocumentId, command.ChainId);
 
-        // Arkiv PRIMA del relayer, di proposito: se l'indicizzazione fallisce
-        // non si è ancora speso gas. L'ordine inverso lascerebbe un'ancora
-        // on-chain senza indice. Un'entità Arkiv orfana, se il broadcast
-        // fallisse dopo, scade da sola: è il comportamento che vogliamo.
-        var arkivResult = await arkivIndexer
-            .IndexAsync(command with { DocumentHash = normalizedHash }, cancellationToken)
-            .ConfigureAwait(false);
-
+        // L'ancora RWA viene PRIMA dell'indicizzazione: il token on-chain è la
+        // fonte di verità, e solo dopo il broadcast esiste un tx_hash da
+        // mettere nel payload dell'entità Arkiv (schema.md §3).
         var transactionHash = await blockchainRelayer
             .SendNotarizationAsync(
                 command.ChainId, command.WalletAddress, normalizedHash, cancellationToken)
             .ConfigureAwait(false);
 
         logger.LogInformation(
-            "Notarize: completata per documento {DocumentId} su chain {ChainId}, tx {TransactionHash}",
+            "Notarize: ancora on-chain confermata per documento {DocumentId} su chain "
+            + "{ChainId}, tx {TransactionHash}",
             command.DocumentId, command.ChainId, transactionHash);
 
-        return new NotarizationResult(
-            command.DocumentId,
-            normalizedHash,
-            transactionHash,
-            command.ChainId,
-            arkivResult.EntityKey,
-            arkivResult.ExpiresAtBlock);
+        // Conseguenza dell'inversione: qui il gas è GIÀ speso e l'ancora esiste.
+        // Se l'indicizzazione fallisce, la notarizzazione NON è fallita: sarebbe
+        // disonesto restituire un errore a chi ha già pagato e ha una prova
+        // valida on-chain. Si restituisce il successo con arkiv_indexed=false,
+        // e l'entità potrà essere riscritta senza toccare la blockchain.
+        try
+        {
+            var arkivResult = await arkivIndexer
+                .IndexAsync(
+                    command with { DocumentHash = normalizedHash },
+                    transactionHash,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            logger.LogInformation(
+                "Notarize: completata per documento {DocumentId}, tx {TransactionHash}, "
+                + "entità Arkiv {EntityKey}",
+                command.DocumentId, transactionHash, arkivResult.EntityKey);
+
+            return new NotarizationResult(
+                command.DocumentId,
+                normalizedHash,
+                transactionHash,
+                command.ChainId,
+                arkivResult.EntityKey,
+                arkivResult.ExpiresAtBlock,
+                ArkivIndexed: true);
+        }
+        catch (ArkivIndexingException ex)
+        {
+            logger.LogError(ex,
+                "Notarize: ancora on-chain RIUSCITA (tx {TransactionHash}) ma indicizzazione "
+                + "Arkiv fallita per documento {DocumentId} (codice {Code}). La notarizzazione "
+                + "resta valida: l'indice è ricostruibile, la transazione no.",
+                transactionHash, command.DocumentId, ex.Code);
+
+            return new NotarizationResult(
+                command.DocumentId,
+                normalizedHash,
+                transactionHash,
+                command.ChainId,
+                ArkivEntityKey: string.Empty,
+                ArkivExpiresAtBlock: 0,
+                ArkivIndexed: false);
+        }
     }
 
     /// <summary>Validità minima: sotto il minuto la scadenza Arkiv rischia di essere già passata all'atterraggio.</summary>

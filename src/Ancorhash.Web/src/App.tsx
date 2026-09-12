@@ -27,6 +27,7 @@ const TURNSTILE_SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY as
  * Chain senza explorer noto → si mostra il solo tx_hash, senza link.
  */
 const EXPLORER_TX_URLS: Record<number, string> = {
+  43113: 'https://testnet.snowtrace.io/tx/',
   11155111: 'https://sepolia.etherscan.io/tx/',
   80002: 'https://amoy.polygonscan.com/tx/',
   1: 'https://etherscan.io/tx/',

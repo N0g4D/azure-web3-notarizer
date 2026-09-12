@@ -22,6 +22,13 @@ public sealed class NetworkConfig
     /// valore reale) e la stima costi restituisce 0.
     /// </summary>
     public bool IsTestnet { get; init; }
+
+    /// <summary>
+    /// Prefisso URL dell'explorer per una transazione, es.
+    /// "https://testnet.snowtrace.io/tx/". Finisce nel payload Arkiv come
+    /// link di verifica: è un dato pubblico, non un segreto.
+    /// </summary>
+    public string? ExplorerTxUrl { get; init; }
 }
 
 /// <summary>

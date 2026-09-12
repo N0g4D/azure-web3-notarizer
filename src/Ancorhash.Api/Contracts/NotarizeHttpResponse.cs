@@ -29,6 +29,13 @@ public sealed record NotarizeHttpResponse
     [JsonPropertyName("arkiv_expires_at_block")]
     public required string ArkivExpiresAtBlock { get; init; }
 
+    /// <summary>
+    /// False se l'ancora on-chain è riuscita ma l'indicizzazione Arkiv no.
+    /// La notarizzazione resta valida: la prova è la transazione.
+    /// </summary>
+    [JsonPropertyName("arkiv_indexed")]
+    public required bool ArkivIndexed { get; init; }
+
     public static NotarizeHttpResponse From(NotarizationResult result) => new()
     {
         DocumentId = result.DocumentId,
@@ -37,5 +44,6 @@ public sealed record NotarizeHttpResponse
         ChainId = result.ChainId,
         ArkivEntityKey = result.ArkivEntityKey,
         ArkivExpiresAtBlock = result.ArkivExpiresAtBlock.ToString(),
+        ArkivIndexed = result.ArkivIndexed,
     };
 }

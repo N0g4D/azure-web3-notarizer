@@ -15,7 +15,12 @@ public interface IArkivIndexer
     /// indirizzo pubblico (64 hex). Le entità Arkiv sono pubbliche: nessun
     /// segreto, nessun dato personale, nessuna chiave di decifratura.
     /// </summary>
+    /// <param name="anchorTransactionHash">
+    /// Transaction hash dell'ancora RWA già confermata dal relayer. Finisce nel
+    /// payload NON indicizzato dell'entità: è un dato di verifica pubblico.
+    /// </param>
     Task<ArkivIndexResult> IndexAsync(
         NotarizationCommand command,
+        string anchorTransactionHash,
         CancellationToken cancellationToken = default);
 }

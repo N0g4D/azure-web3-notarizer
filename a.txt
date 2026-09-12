@@ -947,3 +947,152 @@ D7. PROSSIMO PASSO
 2. Prima entità reale + prova Mission 02: stessa query prima e dopo la
    scadenza, nessuna chiamata di Delete, polling e non sleep.
 3. Decidere la questione tx_hash nel payload (vedi D3).
+
+
+================================================================================
+APPENDICE E · D3 RISOLTO + FASE 3 (AVALANCHE FUJI)
+Data: 2026-09-11
+================================================================================
+
+E1. INVERSIONE DELL'ORDINE (chiude il punto aperto D3)
+--------------------------------------------------------------------------------
+PRIMA:  Arkiv -> relayer     (nessun gas speso se l'indice fallisce, ma
+                              tx_hash non esisteva ancora e restava fuori dal
+                              payload, contro schema.md §3)
+ORA:    relayer -> Arkiv     (il token RWA è la fonte di verità; il tx_hash
+                              esiste e finisce nel payload non indicizzato)
+
+CONSEGUENZA NUOVA, GESTITA ESPLICITAMENTE: adesso, quando si arriva ad Arkiv,
+il gas è GIÀ speso e l'ancora on-chain esiste. Se l'indicizzazione fallisce,
+la notarizzazione NON è fallita.
+
+Restituire un errore a chi ha già pagato e possiede una prova valida on-chain
+sarebbe disonesto. Quindi NotarizationService cattura ArkivIndexingException
+DOPO il broadcast e restituisce comunque un successo:
+
+    arkiv_indexed = false
+    arkiv_entity_key = ""
+    tx_hash = <valido>
+
+con un LogError. L'asimmetria è voluta: un indice si ricostruisce senza
+toccare la blockchain, una transazione no.
+
+ArkivIndexingException resta gestita in NotarizeFunction con 502 SOLO per i
+fallimenti che avvengono prima del broadcast (oggi nessuno, dopo l'inversione);
+il percorso normale non la propaga più.
+
+
+E2. FASE 3 — AVALANCHE FUJI C-CHAIN
+--------------------------------------------------------------------------------
+SCOPERTA UTILE: NethereumBlockchainRelayer era GIÀ chain-agnostic. Le reti
+arrivano da Blockchain:Networks indicizzate per chain id, quindi passare a
+Fuji è quasi tutto configurazione, non codice. Nessuna riscrittura del relayer.
+
+ENDPOINT VERIFICATO DAL VIVO (non assunto):
+  eth_chainId    0xa869 -> 43113          corrisponde
+  eth_blockNumber            58.330.628
+  eth_gasPrice               160 wei (0,00 gwei)
+  RPC            https://api.avax-test.network/ext/bc/C/rpc
+
+CONFIGURAZIONE (local.settings.json, gitignorato):
+  Blockchain__Networks__43113__RpcUrl        https://api.avax-test.network/ext/bc/C/rpc
+  Blockchain__Networks__43113__Name          Avalanche Fuji C-Chain
+  Blockchain__Networks__43113__NativeCoinId  avalanche-2
+  Blockchain__Networks__43113__IsTestnet     true
+  Blockchain__Networks__43113__ExplorerTxUrl https://testnet.snowtrace.io/tx/
+
+RIMOSSE Sepolia (11155111), Amoy (80002) e Polygon Mainnet (137).
+Le prime due su richiesta; la mainnet perché Team1 impone testnet-only e una
+mainnet configurata durante una demo è solo un rischio di spesa reale.
+Nota: l'RPC di Amoy non risolve nemmeno più come host — era già morto.
+
+NUOVO CAMPO NetworkConfig.ExplorerTxUrl: il link di verifica non era
+configurabile, viveva solo come mappa hardcoded nel frontend. Ora il backend
+può comporlo e infilarlo nel payload Arkiv.
+
+NUOVO local.settings.json.example, COMMITTATO e senza segreti: i giudici
+devono poter riprodurre la configurazione. Il file reale resta gitignorato.
+
+>>> BLOCCANTE PER L'ESECUZIONE REALE <<<
+Il wallet del relayer 0x8458cF7ED1f5CeA1fe2cD1aa34E67A53a88Bf38e ha:
+    Fuji     0.000000 AVAX     <-- DA FINANZIARE
+    Sepolia  1.288919 ETH
+Faucet Core: https://core.app/tools/testnet-faucet/ (passaggio umano).
+Finché resta a zero, ogni notarizzazione su Fuji fallisce al broadcast.
+
+
+E3. WRITER NODE — tx_hash NEL PAYLOAD
+--------------------------------------------------------------------------------
+write-entity.mjs accettava già tx_hash, anchor_chain ed explorer_url: mancava
+il lato C# che li inviasse. Ora NodeArkivIndexer:
+  - inietta anchorTransactionHash (nuovo parametro di IArkivIndexer)
+  - risolve nome chain ed explorer da BlockchainOptions
+  - compone explorer_url = ExplorerTxUrl + tx_hash
+
+Payload effettivo verificato in dry run:
+  { "tx_hash": "0xabc123",
+    "anchor_chain": "Avalanche Fuji C-Chain",
+    "explorer_url": "https://testnet.snowtrace.io/tx/0xabc123" }
+
+schema.md §3 ora corrisponde all'implementazione. NESSUNA chiave: la guardia
+anti-128-hex continua a controllare ogni campo in ingresso.
+
+
+E4. AVVERTENZA SU TEAM1 TRACK B — NON ANCORA SODDISFATTA
+--------------------------------------------------------------------------------
+Come da richiesta, "for now" il relayer manda su Fuji la stessa transazione
+dati a 0 valore con l'hash nel campo data. Funziona e produce un tx_hash
+verificabile su Snowtrace, ma NON è ancora un RWA tokenizzato.
+
+manual/prizes.md:242 chiede per il Track B:
+  "an asset rule, an eligibility or transfer policy, and settlement or
+   payment logic"
+e dice esplicitamente che "a landing page or a dashboard without an
+end-to-end onchain flow will not qualify".
+
+Una transazione dati non ha regola d'asset, non ha policy di trasferimento e
+non ha logica di settlement. Per qualificare servirebbe un contratto su Fuji
+con almeno: emissione legata al document_hash, una regola di eleggibilità o
+di trasferimento, e un passaggio di settlement. Non è stato inventato nulla:
+senza un ABI reale avremmo solo indovinato un selector.
+
+
+E5. VERIFICA ESEGUITA
+--------------------------------------------------------------------------------
+  dotnet build              0 errori, 0 avvisi
+  frontend tsc              exit 0
+  frontend oxlint           nessun finding
+  frontend vite build       OK
+  RPC Fuji                  chainId/head/gasPrice verificati dal vivo
+  saldo relayer su Fuji     0 AVAX (bloccante, documentato)
+  writer con tx_hash        payload corretto, 30 blocchi di vita, nessun
+                            campo a 128 hex
+  local.settings.json.example   nessun segreto (grep sulla chiave: 0 match)
+
+NON VERIFICATO end-to-end: serve il wallet Fuji finanziato E il wallet Arkiv
+finanziato. Due faucet, entrambi con passaggio umano.
+
+
+E6. FILE TOCCATI
+--------------------------------------------------------------------------------
+MOD    Core/Services/NotarizationService.cs   ordine invertito + degradazione
+MOD    Core/Abstractions/IArkivIndexer.cs     + anchorTransactionHash
+MOD    Core/Models/NotarizationResult.cs      + ArkivIndexed
+MOD    Infrastructure/Arkiv/NodeArkivIndexer.cs          inoltra tx/chain/explorer
+MOD    Infrastructure/Configuration/BlockchainOptions.cs + ExplorerTxUrl
+MOD    Api/Contracts/NotarizeHttpResponse.cs   + arkiv_indexed
+MOD    Api/local.settings.json                 sola Fuji (gitignorato)
+NUOVO  Api/local.settings.json.example         committato, senza segreti
+MOD    Web/src/App.tsx                         explorer Fuji 43113
+
+
+E7. PROSSIMO PASSO
+--------------------------------------------------------------------------------
+1. UMANO: finanziare 0x8458cF7ED1f5CeA1fe2cD1aa34E67A53a88Bf38e su Fuji
+   (https://core.app/tools/testnet-faucet/) e il wallet Arkiv su
+   https://hub.arkiv.network/faucet.
+2. Primo giro end-to-end reale: Swarm -> Fuji -> Arkiv.
+3. Prova Mission 02: stessa query prima e dopo la scadenza, nessun Delete,
+   polling e non sleep, cadenza dei blocchi rimisurata poco prima.
+4. Decidere se affrontare davvero il Track B di Team1 (vedi E4) o puntare
+   solo su Arkiv e Swarm.

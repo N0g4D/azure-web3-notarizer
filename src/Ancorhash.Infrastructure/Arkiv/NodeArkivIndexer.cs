@@ -21,6 +21,7 @@ namespace Ancorhash.Infrastructure.Arkiv;
 /// </summary>
 public sealed class NodeArkivIndexer(
     IOptions<Configuration.ArkivOptions> options,
+    IOptions<Configuration.BlockchainOptions> blockchainOptions,
     ILogger<NodeArkivIndexer> logger) : IArkivIndexer
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -30,9 +31,11 @@ public sealed class NodeArkivIndexer(
     };
 
     private readonly Configuration.ArkivOptions _options = options.Value;
+    private readonly Configuration.BlockchainOptions _blockchain = blockchainOptions.Value;
 
     public async Task<ArkivIndexResult> IndexAsync(
         NotarizationCommand command,
+        string anchorTransactionHash,
         CancellationToken cancellationToken = default)
     {
         var scriptPath = Path.GetFullPath(_options.ScriptPath);
@@ -51,6 +54,13 @@ public sealed class NodeArkivIndexer(
                 + "in cloud Key Vault. Mai nel codice.");
         }
 
+        // Nome ed explorer della chain di ancoraggio: dati pubblici di
+        // presentazione, destinati al payload NON indicizzato dell'entità.
+        _blockchain.Networks.TryGetValue(command.ChainId, out var network);
+        var explorerUrl = network?.ExplorerTxUrl is { Length: > 0 } prefix
+            ? prefix + anchorTransactionHash
+            : null;
+
         var input = JsonSerializer.Serialize(
             new ArkivWriterInput
             {
@@ -60,6 +70,9 @@ public sealed class NodeArkivIndexer(
                 SwarmAddress = command.SwarmReference,
                 ExpirationSeconds = command.ExpirationSeconds,
                 ChainId = command.ChainId,
+                TxHash = anchorTransactionHash,
+                AnchorChain = network?.Name,
+                ExplorerUrl = explorerUrl,
             },
             JsonOptions);
 
@@ -196,6 +209,11 @@ public sealed class NodeArkivIndexer(
         public required string SwarmAddress { get; init; }
         public required int ExpirationSeconds { get; init; }
         public required int ChainId { get; init; }
+
+        /// <summary>Hash dell'ancora RWA. Verifica pubblica, non un segreto.</summary>
+        public string? TxHash { get; init; }
+        public string? AnchorChain { get; init; }
+        public string? ExplorerUrl { get; init; }
     }
 
     /// <summary>Contratto STDOUT del writer.</summary>
