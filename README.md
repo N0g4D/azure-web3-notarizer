@@ -98,10 +98,29 @@ discover and correlate shrinks on a schedule the data carries itself, without
 anyone having to trust that we ran the cleanup job. What it does not buy is
 revocation.
 
-Revocation would need a different mechanism — Swarm's ACT grantee lists, or
-re-encrypting under a key the holder never had. That is out of scope here, and
-we would rather say so than let the expiry story imply a guarantee it cannot
-make.
+Revocation would need a different mechanism. The next section sketches one.
+
+#### Roadmap: retention that revokes, not just de-indexes
+
+> **Not implemented — a design direction**, written down because it closes the
+> gap named directly above. Nothing here does any of it.
+
+Pair the Arkiv entity's lifetime with a Swarm **ACT** (Access Control Trie)
+**grantee list** over the ciphertext, revoking the grantees at the block the
+entity lapses. Retention becomes one event rather than index hygiene alone: the
+record stops being discoverable *and* stops being readable by previously
+authorised parties at once. It means no longer handing out the 128-hex
+reference, which is a bearer credential and defeats revocation by itself.
+
+**Boundary:** Swarm describes revoke as *"grantees to revoke future access
+from"*, and `@snaha/swarm-id` drops grantee entries without re-encrypting —
+*"the content reference is returned unchanged"*. It shuts the door going
+forward; whoever already downloaded the plaintext keeps their copy.
+
+**Unanswered:** who holds the grantee list, and who may revoke? Entities are
+signed by the relayer and `org` is declared rather than proven (see *The honest
+part*), so the only publisher today is us — reintroducing the operator this
+design exists to remove.
 
 **The privacy split is what makes a public index safe.** The document is
 encrypted in the browser and stored on Swarm; the decryption key never leaves

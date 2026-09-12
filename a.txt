@@ -1621,3 +1621,57 @@ I4. COSA MANCA ANCORA
 3. Form ETHRome + form separato di Team1.
 4. Chiave del compratore demo non salvata: per rieseguire il settlement serve
    generarne uno nuovo e finanziarlo (~0,02 AVAX).
+
+
+================================================================================
+APPENDICE J · ROADMAP ACT + CADENZA
+Data: 2026-09-12
+================================================================================
+
+J1. NUOVA VOCE README: "Roadmap: retention that revokes, not just de-indexes"
+--------------------------------------------------------------------------------
+17 righe, marcata NOT IMPLEMENTED, nessun codice. Collegata esplicitamente al
+limite gia' dichiarato in "What expiry does and does not do": accoppiare la
+vita dell'entita' Arkiv a una grantee list ACT sul ciphertext, revocando i
+grantee al blocco in cui l'entita' scade.
+
+CORREZIONE AL BRIEF — verificata, non assunta.
+Il brief diceva "ACT revocation re-encrypts and republishes". NON E' COSI'.
+  - API ufficiale Swarm: il campo revoke e' descritto come
+    "List of grantees to revoke future access from"  -> guarda in AVANTI
+  - JSDoc di @snaha/swarm-id, revokeGranteesFromAct:
+    "Revoke grantees from an ACT by dropping their entries.
+     The content reference is returned unchanged -- revocation must not
+     re-encrypt it (#496)."
+Quindi la revoca NON ri-cifra e il riferimento al contenuto resta identico.
+Scrivere "re-encrypts and republishes" nel README sarebbe stata un'affermazione
+tecnica falsa, che un giudice Swarm avrebbe colto: proprio cio' che volevamo
+evitare. La voce riporta il meccanismo corretto.
+
+CONSEGUENZA DI PROGETTO EMERSA: dato che la revoca non ri-cifra, ACT serve a
+qualcosa solo se SI SMETTE di distribuire la reference da 128 hex. Quella
+reference e' un bearer credential e da sola annulla qualunque revoca. Detto
+nella voce.
+
+TERMINOLOGIA VERIFICATA sulla documentazione ufficiale: "ACT", "grantee",
+"grantees", "grantee list" sono corretti. Nessun nome di API inventato: la
+voce non ne cita nessuno, parla solo di concetti.
+
+DOMANDA APERTA DICHIARATA: chi detiene la grantee list e chi puo' revocare.
+Oggi le entita' sono firmate dal relayer e "org" e' dichiarato non dimostrato,
+quindi l'unico publisher possibile saremmo noi -> reintrodurrebbe proprio
+l'operatore che il design vuole rimuovere.
+
+
+J2. CADENZA E FINESTRA  (misurata 2026-09-12, 21:50:58)
+--------------------------------------------------------------------------------
+  head 367.152
+  ultimi   30 blocchi:  2,00 s/blocco
+  ultimi  100 blocchi:  2,00 s/blocco
+  ultimi  300 blocchi:  2,00 s/blocco
+
+  Preset demo 110 s = 55 blocchi -> 110 secondi REALI.
+  Il pannello fa polling ogni 4 s: risoluzione della transizione ~4 s.
+
+RIMISURARE POCO PRIMA DI REGISTRARE. A rete scarica known-issues documenta
+~20 s/blocco: li' gli stessi 55 blocchi durerebbero ~18 minuti.
