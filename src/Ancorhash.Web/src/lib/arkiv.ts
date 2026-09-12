@@ -10,12 +10,19 @@
  */
 import { createPublicClient } from '@arkiv-network/sdk'
 import { tiramisu } from '@arkiv-network/sdk/chains'
-import { bytes32, str, u64 } from '@arkiv-network/sdk/attr'
+import { bytes32, i32, str, u64 } from '@arkiv-network/sdk/attr'
 import { eq, gte, lt } from '@arkiv-network/sdk/query'
 import { http } from 'viem'
 
-/** Must stay aligned with SCHEMA_VERSION in the writer (arkiv/schema.md §2). */
-export const SCHEMA_VERSION = 1
+/**
+ * Must stay aligned with SCHEMA_VERSION in the writer (arkiv/schema.md §2).
+ *
+ * Every query filters on `gte("schema_version", …)`, so raising this retires
+ * an older generation of records from the register without deleting anything:
+ * they stay on the index and lapse on their own schedule. This is the
+ * migration case the attribute was typed `i32` for rather than `str`.
+ */
+export const SCHEMA_VERSION = 2
 
 /**
  * Wallet that SIGNS the Arkiv entities. Shared configuration across the two
@@ -65,6 +72,7 @@ function anchored() {
       expiresAt: true,
     })
     .where(eq('app', str('ancorhash')), eq('type', str('notarization')))
+    .where(gte('schema_version', i32(SCHEMA_VERSION)))
   return ARKIV_CREATOR_ADDRESS
     ? builder.createdBy(ARKIV_CREATOR_ADDRESS)
     : builder

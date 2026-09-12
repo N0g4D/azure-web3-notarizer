@@ -10,9 +10,29 @@
 
 ## What is Ancorhash?
 
-Ancorhash is a B2B SaaS platform designed to bring cryptographic proof of existence and data integrity to the Enterprise world (Banks, Healthcare, Public Administration) without the compliance and UX hurdles typical of Web3 applications.
+Ancorhash is a B2B platform that gives a document a proof of existence a
+regulator can check without trusting the party presenting it.
 
-Ancorhash allows users to timestamp and notarize documents on EVM-compatible blockchains (Ethereum, Polygon) providing mathematical certainty that a document existed at a specific time and has not been altered since. 
+### The use case it is built for: AML remediation
+
+When a bank's KYC files are found deficient, the remediation is usually run by
+an outside firm — a consultancy that collects, re-verifies and files the
+missing evidence across thousands of customer records. That firm's product is
+not the documents. It is the **assertion** that a given document existed, in a
+given form, on a given date.
+
+A regulator examining that work has one obvious question: *says who?* The
+consultancy's own case-management database is not an answer, because the
+consultancy controls it. Rows can be edited, backdated, or quietly dropped, and
+nothing inside the system records that it happened. The supervised entity ends
+up vouching for its own evidence — which is precisely what a remediation is
+supposed to fix.
+
+Ancorhash puts the proof somewhere neither the consultancy nor the bank
+controls, while the documents themselves stay encrypted and out of reach.
+Timestamping runs on EVM-compatible chains; the queryable register lives on
+Arkiv and expires on the statutory retention schedule rather than on a
+promise.
 
 ### The Enterprise Differentiators
 1. **Zero Data Leakage:** Due to GDPR and corporate compliance, sensitive documents (contracts, medical records) cannot be uploaded to third-party cloud services. Ancorhash computes the SHA-256 cryptographic hash of the file **locally inside the user's browser**. Only the 32-byte hash is sent to the backend. The document never leaves the user's device.
@@ -23,7 +43,8 @@ Ancorhash allows users to timestamp and notarize documents on EVM-compatible blo
 
 ## Why Arkiv?
 
-*Why a notarization registry needs a Web3 database, and not Postgres.*
+*Why a notarization registry needs a Web3 database, and not Postgres — and
+why the regulator above is the reader that decides it.*
 
 **A notary that you have to trust is not a notary.** Ancorhash's product is a
 claim a third party can check: *this document existed, in this form, at this
@@ -126,6 +147,49 @@ private database cannot do the job at any price.
 
 > The mechanical design (attributes, types, expiry arithmetic, queries) is in
 > [`arkiv/schema.md`](arkiv/schema.md).
+
+---
+
+## What the public deployment does, and what it does not
+
+**Live at [ancorhash.vercel.app](https://ancorhash.vercel.app).**
+
+The deployed page is the **register**, and it is fully live: it queries the
+public Arkiv index straight from your browser, with no backend, no account and
+no API key. Filter by organisation, document type or date window, open a record
+and follow its anchor through to Avalanche. Nothing on that page is routed
+through a server we control — which is the whole claim, so it would be odd to
+demonstrate it any other way.
+
+Notarizing is not on that page, and that follows from the design rather than
+working around it. Writing a record means paying gas on the customer's behalf,
+which means holding the relayer key. A key that can sign transactions cannot
+live in a static bundle downloadable by anyone, so the write path runs behind
+the gas-sponsoring backend — in this PoC, locally. The same split is why
+corporate users never touch a wallet: somebody has to hold the key, and it is
+deliberately not the browser.
+
+So the two halves land where they should:
+
+| | Runs where | Why |
+|---|---|---|
+| **Reading the register** | your browser, against the public index | verification must not depend on us, or it proves nothing |
+| **Writing a record** | the gas-sponsoring relayer | signing needs a key, and a key cannot ship in a public bundle |
+
+A judge can therefore check every claim in this README without running
+anything: the entities are on Tiramisu, the anchor is on Fuji, and the register
+reads them live. The notarization flow is in the demo video.
+
+**The records you will see are sample records, not mock data.** They are an AML
+remediation scenario — a consultancy evidencing a KYC batch for a bank — with
+fictional organisation names and real Arkiv entities behind every row, signed
+by the relayer and live on the public index. Retention windows are deliberate:
+5 years is the EU AMLD floor, longer where a jurisdiction requires it. One
+record carries a deliberately short window so the expiry can be watched
+happening. Seeded by
+[`scripts/seed-registry.mjs`](src/Ancorhash.Infrastructure/ArkivWriter/scripts/seed-registry.mjs),
+whose digests are the SHA-256 of strings published in that file — recompute one
+and look it up yourself.
 
 ---
 

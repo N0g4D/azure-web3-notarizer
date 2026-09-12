@@ -1,8 +1,12 @@
 /**
- * Seeds the public registry with a handful of records so the auditor view has
- * something to show. Reproducible on purpose: every document digest is the
- * SHA-256 of a published string, so anyone can recompute it and check that the
- * register is not fabricated.
+ * Seeds the public registry with sample records for the AML remediation
+ * scenario.
+ *
+ * These are SAMPLE RECORDS, NOT MOCK DATA: every one is a real Arkiv entity,
+ * signed by the relayer and live on the public Tiramisu index. Only the
+ * organisation names are fictional. Reproducible on purpose too — every
+ * document digest is the SHA-256 of a published string, so anyone can
+ * recompute it and check the register was not fabricated.
  *
  *   ARKIV_PRIVATE_KEY=0x... ARKIV_RPC_URL=... node scripts/seed-registry.mjs
  *
@@ -22,13 +26,38 @@ const ANCHOR_TX = '0x039f85a41057619ba274a8212d50b95accd50c2187e48dcceff82e5ec0b
 const SWARM = '959daf94110f4e2ec69c1ebd7a5182489d3f06aa1384e215b4cf859822a4cfe8'
 
 const RECORDS = [
-  { text: 'Ancorhash ETHRome 2026 demo invoice', org: 'acme-spa', type: 'invoice', days: 7 },
-  { text: 'Ancorhash demo supply contract 2026', org: 'acme-spa', type: 'contract', days: 7 },
-  { text: 'Ancorhash demo delivery note 4471', org: 'acme-spa', type: 'delivery-note', days: 7 },
-  { text: 'Ancorhash demo invoice NW-2026-118', org: 'nordwind-gmbh', type: 'invoice', days: 7 },
-  // Short-lived on purpose: gives the "lapsing within 24 h" filter something
-  // to discriminate, and still outlives a judging session.
-  { text: 'Ancorhash demo bank statement Q3', org: 'acme-spa', type: 'bank-statement', hours: 6 },
+  // One consultancy running an AML remediation batch for a bank, plus a second
+  // client. Organisation names are fictional; the entities are real, written to
+  // the public Arkiv index by the relayer and readable by anyone.
+  //
+  // Retention windows are deliberate, not decorative. AML record-keeping runs
+  // 5 years from the end of the customer relationship under EU AMLD, and several
+  // jurisdictions require longer, so:
+  //   1825 d = 5 years   (the AMLD floor)
+  //   2555 d = 7 years   (common internal policy, a margin over the floor)
+  //   3650 d = 10 years  (the longest national requirement in scope)
+  // The index entry lapses when the obligation does. Nothing deletes it.
+
+  // The reproducible one: its digest is also the Fuji token id, so a judge can
+  // recompute sha256 of this exact string and find the same value on Arkiv,
+  // on Swarm as a commitment, and on Avalanche as a token.
+  { text: 'Ancorhash ETHRome 2026 demo invoice',
+    org: 'northbank-plc',  type: 'invoice',         days: 1825 },
+
+  { text: 'Northbank KYC remediation - account statement 2021-Q3',
+    org: 'northbank-plc',  type: 'bank-statement',  days: 1825 },
+
+  { text: 'Northbank KYC remediation - customer agreement 2019',
+    org: 'northbank-plc',  type: 'contract',        days: 3650 },
+
+  { text: 'Meridian Trust KYC remediation - account statement 2022-Q1',
+    org: 'meridian-trust', type: 'bank-statement',  days: 2555 },
+
+  // Short-lived on purpose: the Mission 02 demonstration. Gives the
+  // "lapsing within 24 h" filter something to discriminate, and outlives a
+  // judging session.
+  { text: 'Ancorhash retention window demonstration',
+    org: 'northbank-plc',  type: 'retention-demo',  hours: 6 },
 ]
 
 const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex')

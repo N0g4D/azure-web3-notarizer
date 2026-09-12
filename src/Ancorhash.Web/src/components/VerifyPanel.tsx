@@ -217,6 +217,15 @@ export function VerifyPanel() {
           browser — no account, no API key, and nothing routed through
           Ancorhash. You are not taking our word for any of it.
         </p>
+        <p className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs leading-relaxed text-neutral-600">
+          <strong>Sample records, real entities.</strong> The rows below are an
+          AML remediation scenario: a consultancy evidencing a KYC batch for a
+          bank. The organisation names are fictional — the entities are not.
+          Each one is a real Arkiv entity on the public Tiramisu index, signed
+          by the relayer, with a retention window that mirrors the statutory
+          period (5 years under EU AMLD, longer where a jurisdiction requires
+          it). Nothing here is stubbed or served from a fixture.
+        </p>
       </div>
 
       {/* Filters — each one is a predicate over a typed, indexed attribute */}

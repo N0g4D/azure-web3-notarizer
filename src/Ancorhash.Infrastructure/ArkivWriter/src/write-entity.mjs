@@ -34,8 +34,16 @@ import { privateKeyToAccount } from "viem/accounts"
 
 /** Block time nominale di Tiramisu. Non è un orologio: vedi schema.md §5. */
 const BLOCK_TIME_SECONDS = 2
-/** Versione dello schema delle entità (arkiv/schema.md). */
-const SCHEMA_VERSION = 1
+/**
+ * Entity schema version (arkiv/schema.md).
+ *
+ * Bumped to 2 when the sample set was reworked into the AML remediation
+ * scenario. The read path filters on `gte("schema_version", i32(2))`, which is
+ * exactly the migration case the attribute was typed numeric for: earlier
+ * records stay on the index and lapse on their own schedule rather than being
+ * deleted, and the registry stops mixing two generations of sample data.
+ */
+const SCHEMA_VERSION = 2
 
 const HEX64 = /^[0-9a-fA-F]{64}$/
 const HEX128 = /^[0-9a-fA-F]{128}$/

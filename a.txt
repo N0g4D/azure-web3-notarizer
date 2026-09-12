@@ -1541,3 +1541,83 @@ H5. COSA MANCA DAVVERO, IN ORDINE
 5. Resta vero quanto gia' dichiarato: org e' DICHIARATO non dimostrato, un
    solo wallet firma sia le entita' Arkiv sia l'ancora Fuji, e kycApproved
    e' una whitelist gestita dall'owner, non una verifica d'identita'.
+
+
+================================================================================
+APPENDICE I · SCENARIO AML, README, FINESTRA DI REGISTRAZIONE
+Data: 2026-09-12
+================================================================================
+
+I1. RECORD DI ESEMPIO — UNA SOLA STORIA
+--------------------------------------------------------------------------------
+Scenario: una societa' di consulenza che evidenzia una remediation KYC per una
+banca. Nomi delle organizzazioni FITTIZI, entita' REALI sull'indice pubblico.
+Mai chiamati "mock": etichettati "sample records, real entities" in UI e README.
+
+  northbank-plc   invoice          91b4e781…   5 anni   <- riproducibile, e'
+                                                           anche il token Fuji
+  northbank-plc   bank-statement   06ec923c…   5 anni
+  northbank-plc   contract         06734d0a…  10 anni
+  meridian-trust  bank-statement   944faee7…   7 anni
+  northbank-plc   retention-demo   712c23e9…   6 ore    <- Mission 02
+
+Finestre deliberate, non casuali: 1825 g = 5 anni (soglia EU AMLD),
+2555 g = 7 anni (policy interna con margine), 3650 g = 10 anni (requisito
+nazionale piu' lungo). L'indice scade quando scade l'obbligo.
+
+PROBLEMA RISOLTO: i vecchi record (acme-spa, nordwind-gmbh) avevano vite di 7
+giorni e NON sarebbero scaduti prima del judging, restando mescolati ai nuovi.
+Non si possono cancellare — e non vogliamo farlo, visto che Mission 02 si regge
+sul non chiamare mai Delete.
+SOLUZIONE: SCHEMA_VERSION 1 -> 2, e ogni query filtra su
+gte("schema_version", i32(2)). E' esattamente il caso di migrazione per cui in
+schema.md avevamo motivato il tipo i32 invece di str. La vecchia generazione
+resta sull'indice e scade da sola; il registro smette di mostrarla.
+Verificato dal vivo: 5 record, acme/nordwind invisibili, filtro "lapsing < 24h"
+restituisce solo retention-demo.
+
+
+I2. README — DUE AGGIUNTE
+--------------------------------------------------------------------------------
+(a) CONTESTO AML. Riscritto "What is Ancorhash?": quando i fascicoli KYC di una
+    banca risultano carenti, la remediation la esegue una societa' esterna, e il
+    suo prodotto non sono i documenti ma l'ASSERZIONE che un documento esistesse
+    in una certa forma a una certa data. Il regolatore chiede "says who?", e il
+    database della societa' non e' una risposta perche' la societa' lo controlla.
+    LA TESI "Why Arkiv" NON E' STATA TOCCATA: l'argomento del verificatore
+    avversariale E' l'argomento AML. Cambiato solo il contesto, aggiornato il
+    sottotitolo per collegare il regolatore al lettore che decide l'argomento.
+
+(b) COSA FA E NON FA IL DEPLOY PUBBLICO. Nuova sezione, inquadrata come
+    coerenza del modello e non come limite:
+      lettura del registro -> nel browser, contro l'indice pubblico, perche' la
+                              verifica non deve dipendere da noi o non prova nulla
+      scrittura            -> dietro il relayer che sponsorizza il gas, perche'
+                              firmare richiede una chiave e una chiave non puo'
+                              stare in un bundle statico scaricabile da chiunque
+    E' la stessa ragione per cui l'utente aziendale non tocca mai un wallet.
+
+
+I3. CADENZA E FINESTRA DI REGISTRAZIONE  (misurata 2026-09-12, 21:37)
+--------------------------------------------------------------------------------
+  head 366.736
+  ultimi   30 blocchi:  2,00 s/blocco
+  ultimi  100 blocchi:  2,00 s/blocco
+  ultimi  300 blocchi:  2,00 s/blocco
+
+  Preset demo 110 s = 55 blocchi -> 110 s REALI alla cadenza attuale.
+
+RIMISURARE POCO PRIMA DI REGISTRARE: guides/known-issues documenta campioni a
+~20 s/blocco a rete scarica, e li' gli stessi 55 blocchi durerebbero ~18 minuti.
+Comando: due eth_getBlockByNumber e una sottrazione.
+
+
+I4. COSA MANCA ANCORA
+--------------------------------------------------------------------------------
+1. REDEPLOY VERCEL — obbligatorio, il sito serve ancora il bundle precedente
+   (registro, titolo inglese, etichetta sample-records, filtro schema v2).
+       cd src/Ancorhash.Web && vercel --prod
+2. Video demo max 3 minuti.
+3. Form ETHRome + form separato di Team1.
+4. Chiave del compratore demo non salvata: per rieseguire il settlement serve
+   generarne uno nuovo e finanziarlo (~0,02 AVAX).
