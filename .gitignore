@@ -33,6 +33,15 @@ env/
 # ── Environment / Secrets ────────────────────────────────────────────
 .env
 .env.*
+
+# Exception: the public build's config. Every value in it is public by
+# construction — a read-only flag, the creator's Ethereum address (which every
+# query anchors on via createdBy(), so it must be known to read the index at
+# all), and an empty RPC URL. Committed so the deployed build is reproducible
+# from the repo; without it a Vercel build has VITE_READ_ONLY unset and lands
+# in Notarize mode pointing at localhost.
+# Secrets stay excluded: .env, .env.local and the rest are still ignored.
+!src/Ancorhash.Web/.env.production
 !.env.example
 
 # ── IDE / Editor ─────────────────────────────────────────────────────
