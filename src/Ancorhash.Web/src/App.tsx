@@ -4,6 +4,7 @@ import type { TurnstileInstance } from '@marsidev/react-turnstile'
 import type { SwarmIdClient } from '@snaha/swarm-id'
 import { ArkivRecordPanel } from './components/ArkivRecordPanel'
 import { FileDropzone } from './components/FileDropzone'
+import { VerifyPanel } from './components/VerifyPanel'
 import { Spinner } from './components/Spinner'
 import { ApiError, getChains, notarize } from './lib/api'
 import type { Chain, NotarizeResponse } from './lib/api'
@@ -133,7 +134,22 @@ function AnchorIcon({ className = 'h-5 w-5' }: { className?: string }) {
   )
 }
 
+/**
+ * Read-only build. A static public deployment has no backend, so the notarize
+ * flow cannot work there while verification can — verification is pure
+ * browser-side Arkiv reads. The landing mode follows that.
+ *
+ * An explicit flag rather than inferring it from VITE_API_BASE_URL: that
+ * variable has a hardcoded localhost fallback and is not set in development
+ * either, so inferring from it would silently put local dev in read-only too.
+ */
+const IS_READ_ONLY = import.meta.env.VITE_READ_ONLY === 'true'
+const HAS_BACKEND = !IS_READ_ONLY
+
+type Mode = 'verify' | 'notarize'
+
 function App() {
+  const [mode, setMode] = useState<Mode>(HAS_BACKEND ? 'notarize' : 'verify')
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [chainsState, setChainsState] = useState<ChainsState>({
     kind: 'loading',
@@ -452,10 +468,39 @@ function App() {
         <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-6 py-5">
           <AnchorIcon className="h-5 w-5 text-neutral-900" />
           <h1 className="text-lg font-bold tracking-tight">Ancorhash</h1>
+          <nav className="ml-auto flex gap-1 text-sm">
+            {(['verify', 'notarize'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`rounded-lg px-3 py-1.5 transition-colors ${
+                  mode === m
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-500 hover:text-neutral-900'
+                }`}
+              >
+                {m === 'verify' ? 'Verify' : 'Notarize'}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-12">
+        {mode === 'verify' ? (
+          <VerifyPanel />
+        ) : (
+        <>
+        {!HAS_BACKEND && (
+          <div className="mb-6 rounded-lg border border-neutral-300 bg-neutral-50 px-4 py-3 text-sm leading-relaxed text-neutral-700">
+            <strong>Read-only deployment.</strong> Notarizing needs the
+            Ancorhash backend (the gas-sponsored relayer and the Arkiv writer),
+            which is not part of this static build. Everything under{' '}
+            <strong>Verify</strong> is fully live: it queries the public Arkiv
+            index straight from your browser.
+          </div>
+        )}
         <h2 className="text-2xl font-bold tracking-tight">
           Notarize a document
         </h2>
@@ -950,6 +995,9 @@ function App() {
           <div className="mt-4">
             <ArkivRecordPanel documentHash={phase.hash} result={phase.result} />
           </div>
+        )}
+
+        </>
         )}
 
         <footer className="mt-12 border-t border-neutral-200 pt-4 text-xs text-neutral-400">

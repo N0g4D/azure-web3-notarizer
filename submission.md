@@ -8,10 +8,24 @@ an expiry the data enforces itself.
 - **Repo:** https://github.com/N0g4D/azure-web3-notarizer (public)
 - **Branch:** `ethrome-2026`
 - **Demo video:** *(to be added — max 3 minutes)*
-- **Deployed dapp:** not hosted. The frontend runs locally (`npm run dev`,
-  Vite on :5173) against the Azure Functions host on :7071. The on-chain
-  components *are* live and publicly verifiable — the Fuji contract and the
-  Arkiv entities below can be inspected without running anything of ours.
+- **Deployed dapp:** *(URL to be added after deploy)* — a static read-only
+  build. Verification is fully live there: it queries the public Arkiv index
+  straight from the browser, with no backend, no account and no API key.
+  Notarizing needs the Ancorhash relayer and is shown in the demo video.
+
+**Try the verification without installing anything.** Paste this digest into
+the Verify view:
+
+```
+91b4e781b2cbed53941e491a79de0b5981ba82de1a1b27b61fb5d5b02351a7bb
+```
+
+It is the SHA-256 of the string `Ancorhash ETHRome 2026 demo invoice`, so you
+can reproduce it yourself:
+`printf '%s' 'Ancorhash ETHRome 2026 demo invoice' | shasum -a 256`.
+The record resolves to Arkiv entity
+`0x76e41e75589611da561d5d452ecea278d54f885ec30586534eb20a9b26edca6d`, with a
+24-hour index lifetime and a link to the Fuji anchor.
 
 ---
 
