@@ -52,10 +52,15 @@ const DEFAULT_VALIDITY_DAYS = '30'
 /** Validity ceiling: beyond 10 years the stamp cost stops making sense. */
 const MAX_VALIDITY_DAYS = 3650
 /**
- * Demo preset: a 60-second lifetime makes expiry observable during judging.
- * With days as the only unit, no judge would ever see a record expire.
+ * Demo preset. A lifetime long enough to narrate on camera: 110 s is about
+ * 55 blocks at the nominal 2 s cadence, leaving room to show the record, the
+ * countdown and then the disappearance without rushing. 60 s was too tight
+ * once the Swarm upload and the Fuji mint had eaten into the window.
+ *
+ * Measured on 2026-09-12: created 16:55:05, still returned at block 358329,
+ * gone at block 358332 (16:56:58) -- 113 s wall clock, no Delete call.
  */
-const DEMO_EXPIRATION_SECONDS = 60
+const DEMO_EXPIRATION_SECONDS = 110
 
 /** USD amount to two decimals; below a cent it shows "<$0.01". */
 function formatUsd(amount: number): string {

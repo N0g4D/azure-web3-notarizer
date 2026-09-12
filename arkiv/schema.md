@@ -331,6 +331,13 @@ Making `org` provable needs the organisation to hold its own key and sign, or
 an attestation from a trusted issuer. That is real work and out of scope for
 40 hours, so we state the limitation instead of implying a guarantee.
 
+**A second limit, in the same spirit.** The Arkiv signing wallet and the EVM
+relayer wallet are currently the same key, so `$creator` on the entity and
+`from` on the anchor transaction are the same address. Checking one against
+the other proves the two records are consistent, not that two independent
+parties attested. Separating them is configuration — distinct settings keys
+already exist — not code.
+
 One thing the index **does** prove, and we use it deliberately. `$creator` is
 immutable and unforgeable — *"Anyone can copy your project attribute onto
 their own entities. Nobody can forge `$creator`"*

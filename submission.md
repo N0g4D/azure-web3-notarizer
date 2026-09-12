@@ -211,9 +211,11 @@ Written down because a judge will find them anyway.
 - **`org` is declared, not proven.** Entities are signed by our relayer, which
   is what lets users notarize without a wallet. The signature proves *Ancorhash
   wrote this record*, not that the named organisation authorised it.
-- **One wallet signs both.** The Arkiv entity creator and the Fuji anchor are
-  currently the same key, so `$creator` and the anchor identity are not
-  independent. Separating them is configuration, not code.
+- **One wallet signs both sides of the proof.** The Arkiv entity creator and
+  the Fuji anchor are currently the same key, so cross-checking `$creator`
+  against the anchor's `from` address proves the two records are *consistent*,
+  not that two independent parties attested. Separating them is configuration,
+  not code: the two values already come from distinct settings keys.
 - **Expiry is not revocation.** It removes the entity from the public index. It
   does not delete the blob on Swarm, does not revoke the decryption key, and
   does not undo reads already made. See `README.md`.

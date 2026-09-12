@@ -102,6 +102,19 @@ holding crypto. The signature proves *Ancorhash wrote this record*. It does
 requires the organisation to hold its own key, or an attestation from a
 trusted issuer — real work, and not 40 hours of it.
 
+**One wallet currently signs both sides of the proof.** The argument above
+leans on `$creator` being unforgeable, and it is. But today the wallet that
+creates the Arkiv entity and the wallet that mints the Fuji anchor are the
+*same key* — `Arkiv:PrivateKey` and `Evm:RelayerPrivateKey` hold the same
+value. So a verifier checking that the index entry and the on-chain asset
+agree is checking two statements from one signer, not two independent ones.
+That is weaker than it looks at a glance, and worth saying before someone
+notices: cross-checking `$creator` against the anchor's `from` address proves
+consistency, not corroboration. Separating them is **configuration, not
+code** — the two values are already read from distinct settings keys, so
+generating a second wallet, funding it, and pointing `Arkiv:PrivateKey` at it
+is all that stands between here and genuinely independent signers.
+
 **And a normal database would be fine for most of this.** Postgres would serve
 the dashboard faster, cheaper, with richer queries, full-text search, joins and
 no block times. If Ancorhash were an internal document tracker, Postgres would
