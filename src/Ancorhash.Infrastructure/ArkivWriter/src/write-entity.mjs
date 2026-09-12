@@ -61,8 +61,16 @@ function readStdin() {
   })
 }
 
-/** 64 hex senza prefisso -> Hex 0x, che è ciò che bytes32() accetta. */
-function toHex32(value, field) {
+/**
+ * 64 hex senza prefisso -> Hex 0x, che è ciò che bytes32() accetta.
+ *
+ * Esportata di proposito: il frontend deve produrre ESATTAMENTE la stessa
+ * forma quando interroga, altrimenti la query non trova nulla e non dà errore
+ * (un type/value mismatch su Arkiv restituisce zero risultati in silenzio).
+ * Il test cross-runtime in Ancorhash.Web confronta questa funzione con quella
+ * del frontend invece di fidarsi che due copie restino allineate.
+ */
+export function toHex32(value, field) {
   if (typeof value !== "string" || !HEX64.test(value)) {
     throw new WriterError("invalid_hex", `${field} deve essere di 64 caratteri hex senza 0x.`)
   }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Turnstile } from '@marsidev/react-turnstile'
 import type { TurnstileInstance } from '@marsidev/react-turnstile'
 import type { SwarmIdClient } from '@snaha/swarm-id'
+import { ArkivRecordPanel } from './components/ArkivRecordPanel'
 import { FileDropzone } from './components/FileDropzone'
 import { Spinner } from './components/Spinner'
 import { ApiError, getChains, notarize } from './lib/api'
@@ -189,8 +190,13 @@ function App() {
 
   // Ogni volta che la connessione cambia, si rilegge il batch: un gift code
   // riscattato a metà sessione deve sbloccare la UI senza ricaricare.
+  // Si dipende dall'id dell'identità e non dall'oggetto: ConnectionInfo arriva
+  // nuovo a ogni notifica, e usarlo come dipendenza rileggerebbe il batch di
+  // continuo.
+  const swarmIdentityId = swarmInfo?.identity?.id
+  const swarmCanUpload = swarmInfo?.canUpload
   useEffect(() => {
-    if (!swarmClient || !swarmInfo?.identity) {
+    if (!swarmClient || !swarmIdentityId) {
       setStamp(UNKNOWN_STAMP)
       return
     }
@@ -202,7 +208,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [swarmClient, swarmInfo?.identity?.id, swarmInfo?.canUpload])
+  }, [swarmClient, swarmIdentityId, swarmCanUpload])
 
   // "Pronto" solo con un batch che esiste ED è usable.
   const swarmBlocker = swarmInfo
@@ -934,6 +940,12 @@ function App() {
                 Notarizza un altro documento
               </button>
             </div>
+          </div>
+        )}
+
+        {phase.kind === 'success' && (
+          <div className="mt-4">
+            <ArkivRecordPanel documentHash={phase.hash} />
           </div>
         )}
 

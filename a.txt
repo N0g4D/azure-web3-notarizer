@@ -1245,3 +1245,179 @@ NUOVO  src/Ancorhash.Core/Exceptions/DuplicateNotarizationException.cs
 MOD    NethereumBlockchainRelayer.cs, IBlockchainRelayer.cs,
        NotarizationService.cs, NotarizeFunction.cs, BlockchainOptions.cs,
        local.settings.json(.example)
+
+
+================================================================================
+APPENDICE G · VERIFICA FASE 1, PERCORSO DI LETTURA ARKIV, MISSION 02
+Data: 2026-09-12
+================================================================================
+
+G0. FASE 1 VERIFICATA END-TO-END (dall'utente)
+--------------------------------------------------------------------------------
+Upload cifrato su Swarm riuscito, indirizzo pubblico a 64 hex e reference
+completa a 128 hex entrambi mostrati in UI, notarizzazione CONFERMATA su
+Avalanche Fuji:
+  0x039f85a41057619ba274a8212d50b95accd50c2187e48dcceff82e5ec0b3963e
+Relayer finanziato, checkout mock funzionante, expiration_seconds collegato.
+
+
+G1. CAUSA DEL TIMEOUT IN UPLOAD — ORA DOCUMENTATA
+--------------------------------------------------------------------------------
+NUOVO swarm/friction.md, separato da arkiv/friction.md perché gli sponsor sono
+due e nessuna delle due voci riguarda Arkiv.
+
+S-01  Swarm ID accetta SOLO una seed phrase.
+      Il manuale ETHRome dice "sign in with a passkey or an Ethereum account"
+      (manual/prizes.md:162), ma la UI non offre né connessione di un account
+      Ethereum né import di una chiave privata. Quindi la chiave del gift code
+      NON può fare da identità: possiede il batch, ma non è utilizzabile come
+      login. È questo che aveva bloccato la Fase 1.
+
+S-02  canUpload era true SENZA uno stamp utilizzabile, e il fallimento
+      arrivava ~30 s dopo come timeout opaco. L'informazione giusta era già
+      nell'SDK: getPostageBatch() porta exists e usable, ma canUpload non li
+      consulta.
+
+RIMEDIO IN CODICE: non ci si fida più del flag.
+  swarm.ts   + fetchStampStatus(client) -> { checked, batch?, error? }
+             + uploadUnavailableReason(info, stamp) ora esige
+               batch.exists && batch.usable
+             + uploadEncrypted(client, file, stamp, onProgress?) — lo stamp è
+               un PARAMETRO OBBLIGATORIO: nessun upload può partire senza che
+               qualcuno abbia davvero guardato il batch
+  App.tsx    il pannello mostra identità, indirizzo, batchID, "utilizzabile"
+             o "NON utilizzabile", depth/utilizzo/TTL. "Pronto" non può più
+             comparire senza storage dietro.
+             Il batch viene riletto a ogni cambio di connessione, così un gift
+             code riscattato a metà sessione sblocca la UI senza ricaricare.
+
+
+G2. README — "What expiry does and does not do"  [correzione di una nostra esagerazione]
+--------------------------------------------------------------------------------
+L'argomento sulla scadenza era troppo forte e un giudice lo avrebbe smontato.
+Aggiunta una sottosezione che dice esplicitamente cosa la scadenza NON fa:
+
+  - NON cancella il documento: il blob cifrato resta su Swarm finché il
+    postage batch è pagato
+  - NON revoca la chiave di decifratura: chi ha la reference da 128 hex
+    continua a poter decifrare
+  - NON annulla le letture già avvenute: l'indice è stato pubblico, e la
+    transazione di ancoraggio su Avalanche è immutabile per costruzione
+
+Riformulato il valore come MINIMIZZAZIONE DEI DATI DELL'INDICE PUBBLICO, non
+come controllo d'accesso. La revoca richiederebbe un altro meccanismo (grantee
+list ACT di Swarm, o ricifratura con una chiave che il detentore non ha mai
+avuto): fuori scope, e lo diciamo noi invece di lasciarlo trovare.
+Puntatore aggiunto anche in arkiv/schema.md §5, punto 5.
+
+
+G3. RIMOZIONE DI EXTRACT
+--------------------------------------------------------------------------------
+Nessun chiamante dalla Fase 1, e un endpoint di upload file contraddiceva la
+promessa Zero Data Leakage del README. Rimossi 8 file + 1 riga di DI +
+DocumentIntelligenceOptions, più il badge Azure AI e il ramo "Opt-in OCR" dal
+diagramma. Build pulita.
+
+
+G4. RENAME swarm_reference -> swarm_address
+--------------------------------------------------------------------------------
+Il campo trasporta l'indirizzo pubblico di 64 hex, non la reference. Il vecchio
+nome invitava esattamente l'errore che la validazione a 128 hex esiste per
+bloccare. Rinominato su tutti e tre i runtime (frontend, DTO/command C#,
+bridge). Il writer Node usava già swarm_address. Zero residui.
+
+
+G5. STEP 4 — PERCORSO DI LETTURA ARKIV NEL FRONTEND  [il pezzo che mancava]
+--------------------------------------------------------------------------------
+La Fase 2 aveva costruito solo la SCRITTURA. L'architettura ibrida approvata
+(B5) prevedeva anche le letture dal browser, e senza quelle la Mission 02 non
+è dimostrabile: la prova è la stessa query prima e dopo la scadenza.
+
+NUOVO src/Ancorhash.Web/src/lib/arkiv.ts
+  createPublicClient su tiramisu — non firma e non ha chiavi, quindi è sicuro
+  nel bundle. L'ACCESS KEY NON CI VA: finirebbe nelle richieste di rete di
+  chiunque apra la pagina.
+  Query di schema.md §7: findByDocumentHash (Q1), findByOrgSince (Q2),
+  findExpiringWithin (Q3). Tutte ancorate a createdBy().
+
+CONFIGURAZIONE CONDIVISA FRA I DUE RUNTIME
+  VITE_ARKIV_CREATOR_ADDRESS nel frontend deve combaciare con l'indirizzo
+  derivato da ARKIV_PRIVATE_KEY del backend. Se divergono, OGNI query si
+  ancora al creatore sbagliato e non torna NULLA, in silenzio.
+  Per questo c'è npm run arkiv:creator: deriva l'indirizzo dalla chiave e
+  confronta con il .env, uscendo in errore se non coincidono.
+
+NUOVO components/ArkivRecordPanel.tsx — la prova della Mission 02
+  Stessa identica query a intervalli di 4 s. POLLING e non sleep: dormire
+  60 s e interrogare una volta sola può cadere dal lato sbagliato del confine.
+  Registra le TRANSIZIONI, cioè il primo blocco in cui l'entità smette di
+  essere restituita, con orario e altezza. Mostra anche i blocchi mancanti
+  alla scadenza. Nessuna chiamata di Delete, mai.
+
+
+G6. TEST ROUND-TRIP hex <-> bytes32 FRA I DUE RUNTIME
+--------------------------------------------------------------------------------
+Il rischio è insidioso: su Arkiv un valore che non combacia NON dà errore, la
+query torna zero risultati in silenzio (official/typescript-sdk/querying-data:
+"a type mismatch is not an error: the query runs and returns nothing").
+
+test/hex32.test.ts importa le funzioni VERE di entrambi i lati — toHex32 del
+frontend e toHex32 esportata dal writer Node — invece di due copie scritte nel
+test. Se una delle due cambia, il test se ne accorge.
+  10 test, 10 PASS: maiuscolo, minuscolo, misto, tutti zeri, tutti f,
+  rifiuto dei 128 hex su entrambi i lati, rifiuto di lunghezze e caratteri
+  non validi.
+Aggiunto vitest come dev dependency e lo script npm test.
+
+
+G7. CADENZA DEI BLOCCHI — RIMISURATA PRIMA DELLA DEMO
+--------------------------------------------------------------------------------
+Tiramisu, head 356.056, misurato il 2026-09-12 alle 15:41:
+  ultimi   50 blocchi: 2,00 s/blocco
+  ultimi  200 blocchi: 2,00 s/blocco
+  ultimi 1000 blocchi: 2,00 s/blocco
+Il preset demo da 30 blocchi vale quindi 60 s reali. Resta da rimisurare
+IMMEDIATAMENTE prima della registrazione: guides/known-issues documenta
+campioni a ~20 s/blocco a rete scarica, e a quella cadenza gli stessi 30
+blocchi durerebbero 10 minuti.
+
+
+G8. VERIFICA ESEGUITA
+--------------------------------------------------------------------------------
+  dotnet build        0 errori, 0 avvisi
+  frontend tsc        exit 0
+  frontend oxlint     nessun finding
+  frontend build      OK
+  vitest              10/10 PASS
+  npm run arkiv:creator   deriva e confronta l'indirizzo, provato
+  cadenza Tiramisu    2,00 s/blocco su tre finestre
+
+NON ANCORA VERIFICATO: nessuna entità Arkiv è ancora stata creata. Serve il
+wallet Arkiv finanziato su https://hub.arkiv.network/faucet (login + CAPTCHA,
+passaggio umano). Finché non esiste un'entità, il pannello Mission 02 gira ma
+non ha nulla da mostrare.
+
+
+G9. FILE TOCCATI
+--------------------------------------------------------------------------------
+NUOVO  swarm/friction.md
+NUOVO  src/Ancorhash.Web/src/lib/arkiv.ts
+NUOVO  src/Ancorhash.Web/src/components/ArkivRecordPanel.tsx
+NUOVO  src/Ancorhash.Web/test/hex32.test.ts
+NUOVO  src/Ancorhash.Web/scripts/arkiv-creator-address.mjs
+MOD    src/Ancorhash.Web/src/lib/swarm.ts, App.tsx, api.ts, .env, package.json
+MOD    ArkivWriter/src/write-entity.mjs   (toHex32 esportata per il test)
+MOD    README.md, arkiv/schema.md
+MOD    C#: NotarizeHttpRequest, NotarizeFunction, NotarizationCommand,
+       NotarizationService, NodeArkivIndexer, IArkivIndexer, DependencyInjection
+RIMOSSI 8 file di Extract + DocumentIntelligenceOptions
+
+
+G10. PROSSIMO PASSO
+--------------------------------------------------------------------------------
+1. UMANO: finanziare il wallet Arkiv dal faucet, poi npm run arkiv:creator e
+   incollare l'indirizzo in VITE_ARKIV_CREATOR_ADDRESS.
+2. Prima entità reale, poi registrare la Mission 02 con il preset da 60 s
+   RIMISURANDO la cadenza pochi minuti prima.
+3. Deploy di ConfidentialRWA su Fuji e ContractAddress in configurazione
+   (vedi F4): senza, il relayer non emette token e il Track B non qualifica.
