@@ -29,6 +29,13 @@ import type { SwarmIdClient } from '@snaha/swarm-id'
  * the landing flow.
  */
 
+/**
+ * Filename for a retrieved document. Static by necessity: the upload path
+ * stores raw encrypted bytes with no manifest, so Swarm has no name to give
+ * back (`downloadDecrypted` in `lib/swarm.ts`).
+ */
+const DOWNLOAD_FILENAME = 'ancorhash-document.pdf'
+
 const EXPLORER_TX = 'https://testnet.snowtrace.io/tx/'
 const BLOCKS_PER_DAY = 43_200n
 
@@ -189,21 +196,36 @@ export function VerifyPanel({ swarmClient }: { swarmClient: SwarmIdClient | null
     setRefError(null)
     setRefDone(null)
     try {
-      const file = await downloadDecrypted(swarmClient, refShape.value)
+      const data = await downloadDecrypted(swarmClient, refShape.value)
       // Hand the plaintext to the browser as a local blob. It is built from
-      // bytes already in this tab: nothing about the document, its name or its
-      // key crosses the network at this point.
-      const url = URL.createObjectURL(new Blob([file.data]))
+      // bytes already in this tab: nothing about the document or its key
+      // crosses the network at this point.
+      //
+      // The name is fixed because the bytes were uploaded raw, with no
+      // Mantaray manifest to carry one — see `downloadDecrypted`. Notarized
+      // documents are PDFs here, so that is what we declare; a different
+      // format would still download intact, just under the wrong extension.
+      //
+      // The cast is TS pedantry, not a real mismatch: `Uint8Array` is now
+      // generic over its buffer, and `BlobPart` insists on `ArrayBuffer`
+      // while the SDK returns `ArrayBufferLike` — a union that includes
+      // `SharedArrayBuffer`. At runtime the value is a valid BlobPart.
+      // Deliberately NOT `data.buffer`: that is the whole backing buffer, and
+      // if these bytes are a view into a larger one (chunk reassembly often
+      // produces exactly that) the blob would silently gain trailing bytes
+      // and the document would download corrupted.
+      const blob = new Blob([data as unknown as BlobPart], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = file.name
+      anchor.download = DOWNLOAD_FILENAME
       anchor.style.display = 'none'
       document.body.appendChild(anchor)
       anchor.click()
       anchor.remove()
       // Revoking synchronously can cancel the download in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 30_000)
-      setRefDone(file.name)
+      setRefDone(DOWNLOAD_FILENAME)
     } catch (error) {
       setRefError(error instanceof Error ? error.message : 'Retrieval failed.')
     } finally {

@@ -120,8 +120,8 @@ genuinely HTML-typed document would be misreported — and it left a worse
 problem in place: `/bzz/<128 hex>/` puts the **decryption key in a URL path**
 sent to a third-party server, which is the one place guaranteed to be logged.
 The same rule that keeps the key out of the Arkiv index should have kept it out
-of that request. Retrieval now goes through `client.downloadFile()`, which
-resolves the chunks by address and decrypts in the browser, so the gateway's
+of that request. Retrieval now goes through `client.downloadData()`, which
+fetches the chunks by address and decrypts in the browser, so the gateway's
 ambiguous 200 stops mattering to us and the key never leaves the tab. The
 report stands for anyone reading `/bzz/` directly.
 
@@ -133,6 +133,45 @@ client can read. Either removes the guesswork.
 or a Bee node — reasonable, but it is not stated where a developer meets it.
 
 **Observed:** 2026-09-13, `gateway.ethswarm.org`.
+
+---
+
+## S-04 · `downloadFile` on a `uploadData` reference fails inside the Mantaray parser
+
+**Severity:** medium — the error names a parser, not the mistake.
+
+The SDK has two upload paths and two download paths, and they are pairs:
+`uploadData`/`downloadData` move raw bytes, `uploadFile`/`downloadFile` wrap
+and resolve a Mantaray manifest. Crossing them is silent at compile time —
+both download methods take a `Reference`, which is just `string` — and at
+runtime produces:
+
+```
+MantarayNode#unmarshal invalid version hash
+```
+
+We upload with `uploadData` (raw encrypted bytes, no manifest) and reached for
+`downloadFile` on the way back. The message points at a corrupt manifest, so
+the natural reading is that the *reference* is bad: wrong, truncated, expired.
+It is none of those. There is simply no manifest to parse, because nothing
+ever wrote one.
+
+**Why it is easy to hit.** The two JSDoc blocks describe the same input — "the
+Swarm reference (hash) of the data/file to download" — and neither says the
+reference must have been produced by the matching upload method. `downloadData`
+even documents the encrypted 128-hex form explicitly, which makes it read like
+the more specialised call rather than the matching one.
+
+**Fix in our code:** mirror the upload. `uploadData` out, `downloadData` back.
+The trade is the filename: only the manifest carries it, so a raw upload has
+none to return and the UI names the file itself.
+
+**Suggestion:** say in both JSDoc blocks that the download method must match
+the upload method, and catch the parse failure to re-throw something like
+"this reference has no manifest — it was uploaded with `uploadData`, use
+`downloadData`". The SDK knows enough at that point to say so.
+
+**Observed:** 2026-09-13, `@snaha/swarm-id@0.4.0`.
 
 ---
 
