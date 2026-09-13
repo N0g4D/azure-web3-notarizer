@@ -13,6 +13,7 @@
  */
 import { SwarmIdClient } from '@snaha/swarm-id'
 import type { ConnectionInfo, PostageBatch } from '@snaha/swarm-id'
+import { classifyReference, toPublicAddress } from './swarm-reference'
 
 export type { ConnectionInfo, PostageBatch }
 
@@ -174,12 +175,64 @@ export async function uploadEncrypted(
   }
 }
 
-// Reference handling (address vs full reference, gateway URL) lives in
+/**
+ * Retrieves a document from a full 128-hex reference and decrypts it.
+ *
+ * Uses the SDK rather than a URL against a public gateway, and the difference
+ * is not cosmetic. `downloadFile` resolves the manifest through the chunk API:
+ * the encrypted chunks are fetched by ADDRESS and decrypted here, in the
+ * browser, with the key half of the reference. Putting the same reference in
+ * `https://gateway.ethswarm.org/bzz/<128 hex>/` would instead hand the
+ * decryption key to a third-party server, inside a URL path — the one place
+ * guaranteed to be logged. The rule that keeps the key out of Arkiv is the
+ * same rule that keeps it out of a gateway request.
+ *
+ * Downloading needs an initialized client but NOT an authenticated one: the
+ * SDK requires authentication to upload ("not authenticated or cannot upload"),
+ * never to download. That is what makes this work on the public verify page,
+ * where a visiting auditor has no Swarm identity.
+ *
+ * @returns the original filename and the decrypted bytes.
+ */
+export async function downloadDecrypted(
+  client: SwarmIdClient,
+  reference: string,
+): Promise<{ name: string; data: Uint8Array }> {
+  const shape = classifyReference(reference)
+  if (shape.kind !== 'reference') {
+    // Refuse before touching the network: an address cannot decrypt, and
+    // asking Swarm about it would only produce a confusing failure.
+    throw new SwarmError(
+      shape.kind === 'address-only'
+        ? 'That is a 64-hex address, not a full reference: it cannot decrypt.'
+        : shape.reason,
+    )
+  }
+
+  try {
+    const file = await client.downloadFile(shape.value)
+    return {
+      // The manifest does not always carry a name; the address prefix at
+      // least keeps two downloads from colliding in the same folder.
+      name: file.name && file.name.trim() !== ''
+        ? file.name
+        : `swarm-${toPublicAddress(shape.value).slice(0, 12)}`,
+      data: file.data,
+    }
+  } catch (error) {
+    throw new SwarmError(
+      error instanceof Error
+        ? `Swarm could not retrieve this reference: ${error.message}`
+        : 'Swarm could not retrieve this reference.',
+    )
+  }
+}
+
+// Reference handling (address vs full reference) lives in
 // `swarm-reference.ts`: it is pure, and this module cannot be imported under
 // Node because the Swarm ID SDK touches `window` at import time.
 export {
   classifyReference,
-  toGatewayUrl,
   toPublicAddress,
   SWARM_ADDRESS_HEX_LENGTH,
   SWARM_REFERENCE_HEX_LENGTH,

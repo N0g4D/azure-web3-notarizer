@@ -11,7 +11,7 @@
  * retrieval or, far worse, make a 64-hex value look sufficient to decrypt.
  */
 import { describe, expect, it } from 'vitest'
-import { classifyReference, toGatewayUrl, toPublicAddress } from '../src/lib/swarm-reference'
+import { classifyReference, toPublicAddress } from '../src/lib/swarm-reference'
 
 const ADDRESS = 'a'.repeat(64)
 const REFERENCE = 'b'.repeat(64) + 'c'.repeat(64)
@@ -39,19 +39,6 @@ describe('classifyReference', () => {
   })
 })
 
-describe('toGatewayUrl', () => {
-  it('builds a /bzz URL from a full reference', () => {
-    expect(toGatewayUrl(REFERENCE)).toBe(
-      `https://gateway.ethswarm.org/bzz/${REFERENCE}/`,
-    )
-  })
-
-  it('refuses an address-only value', () => {
-    // Without the key half there is nothing to decrypt with.
-    expect(() => toGatewayUrl(ADDRESS)).toThrow()
-  })
-})
-
 describe('address and reference stay distinct', () => {
   it('toPublicAddress keeps the first half and drops the key', () => {
     const address = toPublicAddress(REFERENCE)
@@ -62,7 +49,10 @@ describe('address and reference stay distinct', () => {
     expect(address).not.toContain('c')
   })
 
-  it('the published address is never enough to build a gateway URL', () => {
-    expect(() => toGatewayUrl(toPublicAddress(REFERENCE))).toThrow()
+  it('the published address is never classified as retrievable', () => {
+    // `downloadDecrypted` gates on exactly this: anything that is not
+    // `kind: 'reference'` is refused before the network is touched, so the
+    // half of the reference that Arkiv publishes can never trigger a fetch.
+    expect(classifyReference(toPublicAddress(REFERENCE)).kind).toBe('address-only')
   })
 })

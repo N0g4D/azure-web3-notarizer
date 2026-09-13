@@ -7,8 +7,10 @@ import {
   findByDocumentHash,
   queryRegistry,
 } from '../lib/arkiv'
-import { classifyReference, probeReference, toGatewayUrl } from '../lib/swarm-reference'
+import { classifyReference } from '../lib/swarm-reference'
+import { downloadDecrypted } from '../lib/swarm'
 import type { NotarizationRecord } from '../lib/arkiv'
+import type { SwarmIdClient } from '@snaha/swarm-id'
 
 /**
  * The auditor's view of the registry.
@@ -134,7 +136,7 @@ function RecordDetail({
   )
 }
 
-export function VerifyPanel() {
+export function VerifyPanel({ swarmClient }: { swarmClient: SwarmIdClient | null }) {
   // --- registry (primary) -------------------------------------------------
   const [state, setState] = useState<RegistryState>({ kind: 'loading' })
   const [org, setOrg] = useState('')
@@ -173,23 +175,41 @@ export function VerifyPanel() {
   const [reference, setReference] = useState('')
   const [refBusy, setRefBusy] = useState(false)
   const [refError, setRefError] = useState<string | null>(null)
+  const [refDone, setRefDone] = useState<string | null>(null)
   const refShape = classifyReference(reference)
 
-  // Probe before opening: the gateway answers 200 with its own page for any
-  // address it cannot resolve, so a blind window.open would show a viewer an
-  // anonymous error page instead of the document.
+  // Retrieval goes through the Swarm ID client, not a gateway URL: the SDK
+  // fetches the encrypted chunks by address and decrypts them here, so the key
+  // half of the reference never reaches a server. Downloading only needs an
+  // initialized client — authentication is an upload requirement — which is
+  // why this works for an auditor with no Swarm identity.
   const openReference = useCallback(async () => {
-    if (refShape.kind !== 'reference') return
+    if (refShape.kind !== 'reference' || !swarmClient) return
     setRefBusy(true)
     setRefError(null)
-    const probe = await probeReference(refShape.value)
-    setRefBusy(false)
-    if (!probe.ok) {
-      setRefError(probe.reason)
-      return
+    setRefDone(null)
+    try {
+      const file = await downloadDecrypted(swarmClient, refShape.value)
+      // Hand the plaintext to the browser as a local blob. It is built from
+      // bytes already in this tab: nothing about the document, its name or its
+      // key crosses the network at this point.
+      const url = URL.createObjectURL(new Blob([file.data]))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = file.name
+      anchor.style.display = 'none'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      // Revoking synchronously can cancel the download in some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      setRefDone(file.name)
+    } catch (error) {
+      setRefError(error instanceof Error ? error.message : 'Retrieval failed.')
+    } finally {
+      setRefBusy(false)
     }
-    window.open(toGatewayUrl(refShape.value), '_blank', 'noopener,noreferrer')
-  }, [refShape])
+  }, [refShape, swarmClient])
 
   // --- match a copy (secondary) -------------------------------------------
   const [matchOpen, setMatchOpen] = useState(false)
@@ -430,8 +450,8 @@ export function VerifyPanel() {
           the encrypted chunk but cannot open it. The second half of a full
           reference <strong>is</strong> the decryption key, so the index
           deliberately never holds it. Paste a full 128-hex reference and the
-          document opens — from your browser to the Swarm gateway, never
-          through Ancorhash.
+          document is fetched by address and decrypted <em>in this tab</em> —
+          the key is never sent to Ancorhash, and never to a gateway either.
         </p>
 
         <div className="mt-3 flex items-end gap-2">
@@ -449,7 +469,7 @@ export function VerifyPanel() {
           </div>
           <button
             type="button"
-            disabled={refShape.kind !== 'reference' || refBusy}
+            disabled={refShape.kind !== 'reference' || refBusy || !swarmClient}
             onClick={() => void openReference()}
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-900 px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -457,6 +477,13 @@ export function VerifyPanel() {
             Open document
           </button>
         </div>
+
+        {!swarmClient && (
+          <p className="mt-2 text-xs text-neutral-500">
+            Starting Swarm ID — decryption runs in the browser, so retrieval
+            waits for it. No sign-in needed: that is an upload requirement.
+          </p>
+        )}
 
         {refShape.kind === 'address-only' && (
           <div className="mt-3 rounded-lg border border-neutral-400 bg-neutral-50 p-4">
@@ -476,6 +503,12 @@ export function VerifyPanel() {
 
         {refShape.kind === 'invalid' && reference.trim() !== '' && (
           <p className="mt-3 text-xs text-neutral-500">{refShape.reason}</p>
+        )}
+
+        {refDone && (
+          <p className="mt-3 rounded-md border border-neutral-300 bg-neutral-50 p-3 text-xs leading-relaxed text-neutral-700">
+            Decrypted and saved as <strong className="font-mono">{refDone}</strong>.
+          </p>
         )}
 
         {refError && (

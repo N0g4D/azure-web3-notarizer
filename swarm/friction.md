@@ -114,10 +114,16 @@ the document. Opening blindly means a viewer with a wrong, truncated or
 expired reference lands on an anonymous error page and concludes the *product*
 is broken. During a demo that is the worst possible failure.
 
-**Workaround, now in the code:** fetch first and treat a `text/html` response
-as unresolved, since a real upload carries its own content type. It works, but
-it is a heuristic — a genuinely HTML-typed document would be misreported — and
-we would rather branch on a status code.
+**What we shipped instead:** we first probed with `fetch` and treated a
+`text/html` response as unresolved. That worked, but it was a heuristic — a
+genuinely HTML-typed document would be misreported — and it left a worse
+problem in place: `/bzz/<128 hex>/` puts the **decryption key in a URL path**
+sent to a third-party server, which is the one place guaranteed to be logged.
+The same rule that keeps the key out of the Arkiv index should have kept it out
+of that request. Retrieval now goes through `client.downloadFile()`, which
+resolves the chunks by address and decrypts in the browser, so the gateway's
+ambiguous 200 stops mattering to us and the key never leaves the tab. The
+report stands for anyone reading `/bzz/` directly.
 
 **Suggestion:** return 404 for an unresolvable address, or set a header the
 client can read. Either removes the guesswork.
